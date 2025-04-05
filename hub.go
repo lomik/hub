@@ -148,16 +148,29 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 	for s := range mergeSubLists(candidates...) {
 		if s.topic.Match(e.Topic()) {
 			wg.Add(1)
-			go func(s *sub) {
-				defer wg.Done()
-				_ = s.call(ctx, e)
-			}(s)
+			if e.sync {
+				func(s *sub) {
+					defer wg.Done()
+					_ = s.call(ctx, e)
+				}(s)
+			} else {
+				go func(s *sub) {
+					defer wg.Done()
+					_ = s.call(ctx, e)
+				}(s)
+			}
 		}
 	}
 
 	// Wait if event requires synchronous processing
 	if e.wait {
 		wg.Wait()
+		e.finish(ctx)
+	} else {
+		go func() {
+			wg.Wait()
+			e.finish(ctx)
+		}()
 	}
 }
 

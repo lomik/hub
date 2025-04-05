@@ -72,18 +72,18 @@ func (h *Hub) add(ctx context.Context, s *sub) {
 		if _, exists := h.indexKeyValue[k][v]; !exists {
 			h.indexKeyValue[k][v] = &sublist{}
 		}
-		h.indexKeyValue[k][v].add(context.Background(), s)
+		h.indexKeyValue[k][v].add(ctx, s)
 
 		// Add to wildcard index for this key
 		if _, exists := h.indexKey[k]; !exists {
 			h.indexKey[k] = &sublist{}
 		}
-		h.indexKey[k].add(context.Background(), s)
+		h.indexKey[k].add(ctx, s)
 	})
 
 	// Handle empty topics
 	if s.topic.Len() == 0 {
-		h.indexEmpty.add(context.Background(), s)
+		h.indexEmpty.add(ctx, s)
 	}
 }
 
@@ -162,7 +162,7 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 				sl.remove(ctx, id)
 
 				// Cleanup empty sublists
-				if len(sl.lst) == 0 {
+				if sl.len() == 0 {
 					delete(h.indexKeyValue[k], v)
 				}
 			}
@@ -173,7 +173,7 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 			sl.remove(ctx, id)
 
 			// Cleanup empty sublists
-			if len(sl.lst) == 0 {
+			if sl.len() == 0 {
 				delete(h.indexKey, k)
 			}
 		}
@@ -201,5 +201,5 @@ func (h *Hub) Clear(ctx context.Context) {
 func (h *Hub) Len() int {
 	h.RLock()
 	defer h.RUnlock()
-	return len(h.all.lst)
+	return h.all.len()
 }

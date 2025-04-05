@@ -56,6 +56,14 @@ func (sl *sublist) find(ctx context.Context, id SubID) int {
 	return -1
 }
 
+// len returns count of subscriptions
+func (sl *sublist) len() int {
+	if sl == nil {
+		return 0
+	}
+	return len(sl.lst)
+}
+
 // mergeSubLists returns an iterator over all subscriptions from given sublists.
 // Lists must be sorted by SubID. Duplicates are automatically skipped.
 func mergeSubLists(lists ...*sublist) iter.Seq[*sub] {

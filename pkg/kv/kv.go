@@ -35,6 +35,9 @@ type Map struct {
 // Returns error if input format is invalid
 func Parse(d ...string) (Map, error) {
 	var ret Map
+	if len(d) == 1 && d[0] == "" {
+		return ret, nil
+	}
 	for i := 0; i < len(d); {
 		// Find first unescaped '=' position
 		p := findUnescapedEquals(d[i])

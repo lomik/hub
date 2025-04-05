@@ -9,6 +9,7 @@ type sub struct {
 	topic           *Topic
 	callbackEvent   func(ctx context.Context, e *Event) error
 	callbackPayload func(ctx context.Context, payload any) error
+	once            bool
 }
 
 func (s *sub) call(ctx context.Context, e *Event) error {

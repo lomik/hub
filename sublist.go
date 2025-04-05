@@ -1,7 +1,6 @@
 package hub
 
 import (
-	"context"
 	"iter"
 	"sort"
 )
@@ -11,7 +10,7 @@ type sublist struct {
 }
 
 // add inserts new subscription while maintaining sort order by SubID
-func (sl *sublist) add(_ context.Context, s *sub) {
+func (sl *sublist) add(s *sub) {
 	// Find insertion point using binary search
 	idx := sort.Search(len(sl.lst), func(i int) bool {
 		return sl.lst[i].id >= s.id
@@ -30,7 +29,7 @@ func (sl *sublist) add(_ context.Context, s *sub) {
 }
 
 // remove deletes subscription by ID while maintaining order
-func (sl *sublist) remove(_ context.Context, id SubID) {
+func (sl *sublist) remove(id SubID) {
 	// Find index using binary search
 	idx := sort.Search(len(sl.lst), func(i int) bool {
 		return sl.lst[i].id >= id
@@ -45,7 +44,7 @@ func (sl *sublist) remove(_ context.Context, id SubID) {
 }
 
 // find returns subscription index or -1 if not found
-func (sl *sublist) find(ctx context.Context, id SubID) int {
+func (sl *sublist) find(id SubID) int {
 	idx := sort.Search(len(sl.lst), func(i int) bool {
 		return sl.lst[i].id >= id
 	})

@@ -61,7 +61,7 @@ func (h *Hub) SubscribePayload(ctx context.Context, t *Topic, cb func(ctx contex
 
 // add adds a subscription to all relevant indexes
 func (h *Hub) add(ctx context.Context, s *sub) {
-	h.all.add(ctx, s)
+	h.all.add(s)
 
 	// Process each key-value pair in the topic
 	s.topic.Each(func(k, v string) {
@@ -72,18 +72,18 @@ func (h *Hub) add(ctx context.Context, s *sub) {
 		if _, exists := h.indexKeyValue[k][v]; !exists {
 			h.indexKeyValue[k][v] = &sublist{}
 		}
-		h.indexKeyValue[k][v].add(ctx, s)
+		h.indexKeyValue[k][v].add(s)
 
 		// Add to wildcard index for this key
 		if _, exists := h.indexKey[k]; !exists {
 			h.indexKey[k] = &sublist{}
 		}
-		h.indexKey[k].add(ctx, s)
+		h.indexKey[k].add(s)
 	})
 
 	// Handle empty topics
 	if s.topic.Len() == 0 {
-		h.indexEmpty.add(ctx, s)
+		h.indexEmpty.add(s)
 	}
 }
 
@@ -144,7 +144,7 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 	defer h.Unlock()
 
 	// Find the subscription in the main list
-	idx := h.all.find(ctx, id)
+	idx := h.all.find(id)
 	if idx == -1 {
 		return // Subscription not found
 	}
@@ -152,14 +152,14 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 	s := h.all.lst[idx] // Get the subscription
 
 	// Remove from the main list first
-	h.all.remove(ctx, id)
+	h.all.remove(id)
 
 	// Remove from all key-value indexes
 	s.topic.Each(func(k, v string) {
 		// Remove from exact value index
 		if vals, exists := h.indexKeyValue[k]; exists {
 			if sl, exists := vals[v]; exists {
-				sl.remove(ctx, id)
+				sl.remove(id)
 
 				// Cleanup empty sublists
 				if sl.len() == 0 {
@@ -170,7 +170,7 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 
 		// Remove from wildcard index
 		if sl, exists := h.indexKey[k]; exists {
-			sl.remove(ctx, id)
+			sl.remove(id)
 
 			// Cleanup empty sublists
 			if sl.len() == 0 {
@@ -181,7 +181,7 @@ func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 
 	// Remove from empty topic index if needed
 	if s.topic.Len() == 0 {
-		h.indexEmpty.remove(ctx, id)
+		h.indexEmpty.remove(id)
 	}
 }
 

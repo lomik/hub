@@ -1,24 +1,22 @@
 package hub
 
 import (
-	"context"
 	"testing"
 )
 
 func Test_sublist_add(t *testing.T) {
-	ctx := context.Background()
 	sl := &sublist{}
 
 	t.Run("add to empty list", func(t *testing.T) {
-		sl.add(ctx, &sub{id: 2})
+		sl.add(&sub{id: 2})
 		if len(sl.lst) != 1 || sl.lst[0].id != 2 {
 			t.Errorf("add() failed, got %v, want [2]", sl.lst)
 		}
 	})
 
 	t.Run("add in order", func(t *testing.T) {
-		sl.add(ctx, &sub{id: 1})
-		sl.add(ctx, &sub{id: 3})
+		sl.add(&sub{id: 1})
+		sl.add(&sub{id: 3})
 		if len(sl.lst) != 3 || sl.lst[0].id != 1 || sl.lst[1].id != 2 || sl.lst[2].id != 3 {
 			t.Errorf("add() ordering failed, got %v, want [1 2 3]", sl.lst)
 		}
@@ -26,7 +24,7 @@ func Test_sublist_add(t *testing.T) {
 
 	t.Run("add duplicate", func(t *testing.T) {
 		prevLen := len(sl.lst)
-		sl.add(ctx, &sub{id: 2}) // Дубликат
+		sl.add(&sub{id: 2}) // Дубликат
 		if len(sl.lst) != prevLen+1 {
 			t.Error("add() should allow duplicates")
 		}
@@ -34,48 +32,46 @@ func Test_sublist_add(t *testing.T) {
 }
 
 func Test_sublist_remove(t *testing.T) {
-	ctx := context.Background()
 	sl := &sublist{}
 
 	// Setup initial state
-	sl.add(ctx, &sub{id: 1})
-	sl.add(ctx, &sub{id: 2})
-	sl.add(ctx, &sub{id: 3})
+	sl.add(&sub{id: 1})
+	sl.add(&sub{id: 2})
+	sl.add(&sub{id: 3})
 
 	t.Run("remove middle", func(t *testing.T) {
-		sl.remove(ctx, 2)
+		sl.remove(2)
 		if len(sl.lst) != 2 || sl.lst[0].id != 1 || sl.lst[1].id != 3 {
 			t.Errorf("remove() failed, got %v, want [1 3]", sl.lst)
 		}
 	})
 
 	t.Run("remove first", func(t *testing.T) {
-		sl.remove(ctx, 1)
+		sl.remove(1)
 		if len(sl.lst) != 1 || sl.lst[0].id != 3 {
 			t.Errorf("remove() failed, got %v, want [3]", sl.lst)
 		}
 	})
 
 	t.Run("remove last", func(t *testing.T) {
-		sl.remove(ctx, 3)
+		sl.remove(3)
 		if len(sl.lst) != 0 {
 			t.Errorf("remove() failed, got %v, want empty", sl.lst)
 		}
 	})
 
 	t.Run("remove non-existent", func(t *testing.T) {
-		sl.remove(ctx, 99) // Не должен паниковать
+		sl.remove(99) // Не должен паниковать
 	})
 }
 
 func Test_sublist_find(t *testing.T) {
-	ctx := context.Background()
 	sl := &sublist{}
 
 	// Setup initial state
-	sl.add(ctx, &sub{id: 1})
-	sl.add(ctx, &sub{id: 3})
-	sl.add(ctx, &sub{id: 5})
+	sl.add(&sub{id: 1})
+	sl.add(&sub{id: 3})
+	sl.add(&sub{id: 5})
 
 	tests := []struct {
 		name string
@@ -90,7 +86,7 @@ func Test_sublist_find(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := sl.find(ctx, tt.id); got != tt.want {
+			if got := sl.find(tt.id); got != tt.want {
 				t.Errorf("find() = %v, want %v", got, tt.want)
 			}
 		})
@@ -98,13 +94,12 @@ func Test_sublist_find(t *testing.T) {
 }
 
 func Test_sublist_maintains_order(t *testing.T) {
-	ctx := context.Background()
 	sl := &sublist{}
 
 	// Добавляем в разном порядке
-	sl.add(ctx, &sub{id: 3})
-	sl.add(ctx, &sub{id: 1})
-	sl.add(ctx, &sub{id: 2})
+	sl.add(&sub{id: 3})
+	sl.add(&sub{id: 1})
+	sl.add(&sub{id: 2})
 
 	// Проверяем порядок
 	for i, id := range []SubID{1, 2, 3} {
@@ -114,7 +109,7 @@ func Test_sublist_maintains_order(t *testing.T) {
 	}
 
 	// Удаляем и проверяем порядок
-	sl.remove(ctx, 2)
+	sl.remove(2)
 	if sl.lst[0].id != 1 || sl.lst[1].id != 3 {
 		t.Errorf("Order after remove failed, got %v, want [1 3]", sl.lst)
 	}
@@ -207,4 +202,47 @@ func Test_mergeSubLists_early_stop(t *testing.T) {
 	if count != 2 {
 		t.Errorf("Expected to process 2 elements, got %d", count)
 	}
+}
+
+func Test_sublist_len(t *testing.T) {
+	t.Run("nil sublist", func(t *testing.T) {
+		var sl *sublist
+		if got := sl.len(); got != 0 {
+			t.Errorf("len() = %v, want 0 for nil sublist", got)
+		}
+	})
+
+	t.Run("empty sublist", func(t *testing.T) {
+		sl := &sublist{}
+		if got := sl.len(); got != 0 {
+			t.Errorf("len() = %v, want 0 for empty sublist", got)
+		}
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		sl := &sublist{}
+		sl.add(&sub{id: 1})
+		if got := sl.len(); got != 1 {
+			t.Errorf("len() = %v, want 1 for single element", got)
+		}
+	})
+
+	t.Run("multiple elements", func(t *testing.T) {
+		sl := &sublist{}
+		sl.add(&sub{id: 1})
+		sl.add(&sub{id: 2})
+		if got := sl.len(); got != 2 {
+			t.Errorf("len() = %v, want 2 for two elements", got)
+		}
+	})
+
+	t.Run("after removal", func(t *testing.T) {
+		sl := &sublist{}
+		sl.add(&sub{id: 1})
+		sl.add(&sub{id: 2})
+		sl.remove(1)
+		if got := sl.len(); got != 1 {
+			t.Errorf("len() = %v, want 1 after removal", got)
+		}
+	})
 }

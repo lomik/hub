@@ -102,3 +102,8 @@ func (t *Topic) Each(cb func(k, v string)) {
 func (t *Topic) Match(other *Topic) bool {
 	return t.mp.Match(other.mp)
 }
+
+// Len returns the number of key-value pairs
+func (t *Topic) Len() int {
+	return t.mp.Len()
+}

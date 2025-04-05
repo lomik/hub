@@ -152,6 +152,37 @@ func (m Map) Match(other Map) bool {
 	return i == lenA
 }
 
+// Merge creates new Map with keys from both maps
+// Keys from the argument map override keys from the original map
+func (m Map) Merge(other Map) Map {
+	result := Map{
+		data: make([]KV, 0, len(m.data)+len(other.data)),
+	}
+
+	i, j := 0, 0
+	for i < len(m.data) && j < len(other.data) {
+		switch {
+		case m.data[i].key < other.data[j].key:
+			result.data = append(result.data, m.data[i])
+			i++
+		case m.data[i].key > other.data[j].key:
+			result.data = append(result.data, other.data[j])
+			j++
+		default:
+			// Key exists in both - take value from other map
+			result.data = append(result.data, other.data[j])
+			i++
+			j++
+		}
+	}
+
+	// Append remaining elements
+	result.data = append(result.data, m.data[i:]...)
+	result.data = append(result.data, other.data[j:]...)
+
+	return result
+}
+
 // sortKeys sorts the key-value pairs by key
 func (m *Map) sortKeys() {
 	sort.Slice(m.data, func(i, j int) bool {

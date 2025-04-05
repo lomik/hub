@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -284,4 +285,85 @@ func parseSpaceSeparated(s string) (Map, error) {
 		return Map{}, nil
 	}
 	return Parse(strings.Split(s, " ")...)
+}
+
+func TestMerge(t *testing.T) {
+	tests := []struct {
+		name   string
+		a      string
+		b      string
+		expect string
+	}{
+		{
+			name:   "disjoint keys",
+			a:      "a=1 b=2",
+			b:      "c=3 d=4",
+			expect: "a=1 b=2 c=3 d=4",
+		},
+		{
+			name:   "overlapping keys",
+			a:      "a=1 b=2",
+			b:      "b=3 c=4",
+			expect: "a=1 b=3 c=4",
+		},
+		{
+			name:   "empty first map",
+			a:      "",
+			b:      "a=1 b=2",
+			expect: "a=1 b=2",
+		},
+		{
+			name:   "empty second map",
+			a:      "a=1 b=2",
+			b:      "",
+			expect: "a=1 b=2",
+		},
+		{
+			name:   "multiple overrides",
+			a:      "a=1 b=2 c=3",
+			b:      "b=4 c=5 d=6",
+			expect: "a=1 b=4 c=5 d=6",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := mustParse(t, tt.a)
+			b := mustParse(t, tt.b)
+			expect := mustParse(t, tt.expect)
+
+			result := a.Merge(b)
+
+			if !reflect.DeepEqual(result, expect) {
+				t.Errorf("Merge() mismatch:\nGot:    %v\nExpect: %v",
+					formatMap(result), formatMap(expect))
+			}
+		})
+	}
+}
+
+// mustParse is a helper that parses space-separated key-value pairs or fails the test
+func mustParse(t *testing.T, s string) Map {
+	if s == "" {
+		return Map{}
+	}
+	m, err := Parse(strings.Split(s, " ")...)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	return m
+}
+
+// formatMap returns string representation of Map for error messages
+func formatMap(m Map) string {
+	var sb strings.Builder
+	for i, kv := range m.data {
+		if i > 0 {
+			sb.WriteString(" ")
+		}
+		sb.WriteString(kv.key)
+		sb.WriteString("=")
+		sb.WriteString(kv.value)
+	}
+	return sb.String()
 }

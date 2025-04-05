@@ -38,7 +38,9 @@ func (e *Event) hasOnFinish() bool {
 // Called automatically by the hub after event processing completes.
 func (e *Event) finish(ctx context.Context) {
 	for _, cb := range e.onFinish {
-		cb(ctx, e)
+		if cb != nil {
+			cb(ctx, e)
+		}
 	}
 }
 

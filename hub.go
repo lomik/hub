@@ -30,37 +30,53 @@ func New() *Hub {
 }
 
 // SubscribeEvent registers a new event subscriber with topic matching
-func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.Context, e *Event) error) SubID {
+func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.Context, e *Event) error, opts ...SubscribeOption) SubID {
 	h.Lock()
 	defer h.Unlock()
 
 	id := SubID(h.seq.Add(1))
-
-	h.add(ctx, &sub{
+	s := &sub{
 		id:            id,
 		topic:         t,
 		callbackEvent: cb,
-	})
+	}
+
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		o.modifySub(ctx, s)
+	}
+
+	h.add(ctx, s)
 	return id
 }
 
 // SubscribePayload registers a new payload subscriber with topic matching
-func (h *Hub) SubscribePayload(ctx context.Context, t *Topic, cb func(ctx context.Context, payload any) error) SubID {
+func (h *Hub) SubscribePayload(ctx context.Context, t *Topic, cb func(ctx context.Context, payload any) error, opts ...SubscribeOption) SubID {
 	h.Lock()
 	defer h.Unlock()
 
 	id := SubID(h.seq.Add(1))
-
-	h.add(ctx, &sub{
+	s := &sub{
 		id:              id,
 		topic:           t,
 		callbackPayload: cb,
-	})
+	}
+
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		o.modifySub(ctx, s)
+	}
+
+	h.add(ctx, s)
 	return id
 }
 
 // add adds a subscription to all relevant indexes
-func (h *Hub) add(ctx context.Context, s *sub) {
+func (h *Hub) add(_ context.Context, s *sub) {
 	h.all.add(s)
 
 	// Process each key-value pair in the topic
@@ -88,9 +104,16 @@ func (h *Hub) add(ctx context.Context, s *sub) {
 }
 
 // PublishEvent delivers an event to all matching subscribers
-func (h *Hub) PublishEvent(ctx context.Context, e *Event) {
+func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption) {
 	h.RLock()
 	defer h.RUnlock()
+
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		e = o.modifyEvent(ctx, e)
+	}
 
 	// Collect potential candidate subscriptions lists
 	candidates := make([]*sublist, 0)

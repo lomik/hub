@@ -99,7 +99,7 @@ func (e *Event) WithTopic(topic *Topic) *Event {
 }
 
 // WithWait sets whether the sender should wait for event processing to complete.
-// When true, the Send method will block until all handlers finish.
+// When true, the Publish method will block until all handlers finish.
 // Default is false for asynchronous operation.
 func (e *Event) WithWait(v bool) *Event {
 	n := e.clone()
@@ -108,7 +108,7 @@ func (e *Event) WithWait(v bool) *Event {
 }
 
 // WithSync sets whether the event requires synchronous processing.
-// Synchronous events are processed sequentially in the order received.
+// Synchronous events are processed sequentially by handlers without goroutines.
 // Default is false for concurrent processing.
 func (e *Event) WithSync(v bool) *Event {
 	n := e.clone()

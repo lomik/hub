@@ -6,15 +6,6 @@ import (
 	"sync/atomic"
 )
 
-type SubID uint64
-
-type sub struct {
-	id              SubID
-	topic           *Topic
-	callbackEvent   func(ctx context.Context, e *Event) error
-	callbackPayload func(ctx context.Context, payload any) error
-}
-
 type Hub struct {
 	sync.RWMutex
 	seq  atomic.Uint64 // atomic counter for subscription IDs

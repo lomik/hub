@@ -9,12 +9,12 @@ import (
 type Hub struct {
 	sync.RWMutex
 	seq  atomic.Uint64 // atomic counter for subscription IDs
-	subs []*sub
+	subs *sublist
 }
 
 func New() *Hub {
 	return &Hub{
-		subs: make([]*sub, 0),
+		subs: &sublist{},
 	}
 }
 
@@ -40,7 +40,7 @@ func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.
 		callbackEvent: cb,
 	}
 
-	h.subs = append(h.subs, newSub)
+	h.subs.add(ctx, newSub)
 	return id
 }
 
@@ -56,7 +56,7 @@ func (h *Hub) SubscribePayload(ctx context.Context, t *Topic, cb func(ctx contex
 		callbackPayload: cb,
 	}
 
-	h.subs = append(h.subs, newSub)
+	h.subs.add(ctx, newSub)
 	return id
 }
 
@@ -67,7 +67,7 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event) {
 
 	var wg sync.WaitGroup
 
-	for _, s := range h.subs {
+	for _, s := range h.subs.lst {
 		if s.topic.Match(e.Topic()) {
 			wg.Add(1)
 			go func(sub *sub) {
@@ -87,27 +87,19 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event) {
 func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
 	h.Lock()
 	defer h.Unlock()
-
-	for i, s := range h.subs {
-		if s.id == id {
-			// Remove without preserving order
-			h.subs[i] = h.subs[len(h.subs)-1]
-			h.subs = h.subs[:len(h.subs)-1]
-			return
-		}
-	}
+	h.subs.remove(ctx, id)
 }
 
 // Clear removes all active subscriptions
 func (h *Hub) Clear(ctx context.Context) {
 	h.Lock()
 	defer h.Unlock()
-	h.subs = make([]*sub, 0)
+	h.subs = &sublist{}
 }
 
 // Len returns current number of active subscriptions
 func (h *Hub) Len() int {
 	h.RLock()
 	defer h.RUnlock()
-	return len(h.subs)
+	return len(h.subs.lst)
 }

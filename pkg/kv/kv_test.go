@@ -1,6 +1,7 @@
 package kv
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -198,4 +199,89 @@ func TestKVMethods(t *testing.T) {
 	if kv.Value() != "123" {
 		t.Errorf("Value() = %v, want 123", kv.Value())
 	}
+}
+
+func TestMatch(t *testing.T) {
+	tests := []struct {
+		name   string
+		a      string
+		b      string
+		expect bool
+	}{
+		{
+			name:   "exact match",
+			a:      "color=red size=large",
+			b:      "color=red size=large weight=heavy",
+			expect: true,
+		},
+		{
+			name:   "wildcard in a",
+			a:      "color=* size=large",
+			b:      "color=blue size=large",
+			expect: true,
+		},
+		{
+			name:   "wildcard in b",
+			a:      "color=red size=large",
+			b:      "color=* size=large",
+			expect: true,
+		},
+		{
+			name:   "missing key in b",
+			a:      "color=red size=large",
+			b:      "color=red",
+			expect: false,
+		},
+		{
+			name:   "value mismatch",
+			a:      "color=red size=large",
+			b:      "color=red size=small",
+			expect: false,
+		},
+		{
+			name:   "empty a",
+			a:      "",
+			b:      "any=value",
+			expect: true,
+		},
+		{
+			name:   "different order",
+			a:      "color=red size=large",
+			b:      "size=large color=red",
+			expect: true,
+		},
+		{
+			name:   "partial with wildcard",
+			a:      "color=*",
+			b:      "color=blue size=large",
+			expect: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := parseSpaceSeparated(tt.a)
+			if err != nil {
+				t.Fatalf("Failed to parse a: %v", err)
+			}
+
+			b, err := parseSpaceSeparated(tt.b)
+			if err != nil {
+				t.Fatalf("Failed to parse b: %v", err)
+			}
+
+			result := a.Match(b)
+			if result != tt.expect {
+				t.Errorf("Match() = %v, want %v\nA: %v\nB: %v", result, tt.expect, tt.a, tt.b)
+			}
+		})
+	}
+}
+
+// parseSpaceSeparated converts space-separated key=value pairs to Map
+func parseSpaceSeparated(s string) (Map, error) {
+	if s == "" {
+		return Map{}, nil
+	}
+	return Parse(strings.Split(s, " ")...)
 }

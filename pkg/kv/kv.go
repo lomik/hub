@@ -119,6 +119,39 @@ func (m Map) ToMap() map[string]string {
 	return result
 }
 
+// Match returns true if for all keys in current map:
+// - the key exists in other map
+// - values are equal OR one of the values is "*"
+// Uses the fact that both maps are sorted for O(n+m) comparison
+func (m Map) Match(other Map) bool {
+	i, j := 0, 0
+	lenA, lenB := len(m.data), len(other.data)
+
+	for i < lenA && j < lenB {
+		aKey, bKey := m.data[i].key, other.data[j].key
+
+		switch {
+		case aKey < bKey:
+			// Key exists in A but not in B
+			return false
+		case aKey > bKey:
+			// Key exists in B but not in A - skip
+			j++
+		default:
+			// Keys match - compare values
+			aVal, bVal := m.data[i].value, other.data[j].value
+			if aVal != "*" && bVal != "*" && aVal != bVal {
+				return false
+			}
+			i++
+			j++
+		}
+	}
+
+	// Check if we processed all keys from A
+	return i == lenA
+}
+
 // sortKeys sorts the key-value pairs by key
 func (m *Map) sortKeys() {
 	sort.Slice(m.data, func(i, j int) bool {

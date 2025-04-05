@@ -140,7 +140,49 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event) {
 
 // Unsubscribe removes a subscription by ID
 func (h *Hub) Unsubscribe(ctx context.Context, id SubID) {
-	panic("not implemented")
+	h.Lock()
+	defer h.Unlock()
+
+	// Find the subscription in the main list
+	idx := h.all.find(ctx, id)
+	if idx == -1 {
+		return // Subscription not found
+	}
+
+	s := h.all.lst[idx] // Get the subscription
+
+	// Remove from the main list first
+	h.all.remove(ctx, id)
+
+	// Remove from all key-value indexes
+	s.topic.Each(func(k, v string) {
+		// Remove from exact value index
+		if vals, exists := h.indexKeyValue[k]; exists {
+			if sl, exists := vals[v]; exists {
+				sl.remove(ctx, id)
+
+				// Cleanup empty sublists
+				if len(sl.lst) == 0 {
+					delete(h.indexKeyValue[k], v)
+				}
+			}
+		}
+
+		// Remove from wildcard index
+		if sl, exists := h.indexKey[k]; exists {
+			sl.remove(ctx, id)
+
+			// Cleanup empty sublists
+			if len(sl.lst) == 0 {
+				delete(h.indexKey, k)
+			}
+		}
+	})
+
+	// Remove from empty topic index if needed
+	if s.topic.Len() == 0 {
+		h.indexEmpty.remove(ctx, id)
+	}
 }
 
 // Clear removes all active subscriptions

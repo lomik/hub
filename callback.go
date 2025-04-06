@@ -19,72 +19,70 @@ func wrapSubscribeCallbackGeneric[T any](cb func(context.Context, T) error, cast
 
 // wrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
 func wrapSubscribeCallback(_ context.Context, cb any) (func(ctx context.Context, e *Event) error, error) {
-	var proxy func(context.Context, *Event) error
-
 	switch cbt := cb.(type) {
 	case func(ctx context.Context) error:
-		proxy = func(ctx context.Context, e *Event) error {
+		return func(ctx context.Context, e *Event) error {
 			return cbt(ctx)
-		}
+		}, nil
 
 	case func(context.Context, *Event) error:
-		proxy = cbt
+		return cbt, nil
 
 	// Numeric types
 	case func(context.Context, int) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToInt), nil
 	case func(context.Context, int8) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt8)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToInt8), nil
 	case func(context.Context, int16) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt16)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToInt16), nil
 	case func(context.Context, int32) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt32)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToInt32), nil
 	case func(context.Context, int64) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt64)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToInt64), nil
 
 	// Unsigned integers
 	case func(context.Context, uint) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToUint), nil
 	case func(context.Context, uint8) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint8)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToUint8), nil
 	case func(context.Context, uint16) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint16)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToUint16), nil
 	case func(context.Context, uint32) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint32)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToUint32), nil
 	case func(context.Context, uint64) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint64)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToUint64), nil
 
 	// Floating point
 	case func(context.Context, float32) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToFloat32)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToFloat32), nil
 	case func(context.Context, float64) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToFloat64)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToFloat64), nil
 
 	// String and bool
 	case func(context.Context, string) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToString)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToString), nil
 	case func(context.Context, bool) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToBool)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToBool), nil
 
 	// Time and duration
 	case func(context.Context, time.Time) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToTime)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToTime), nil
 	case func(context.Context, time.Duration) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToDuration)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToDuration), nil
 
 	// Slices and maps
 	case func(context.Context, []string) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToStringSlice)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToStringSlice), nil
 	case func(context.Context, map[string]any) error:
-		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToStringMap)
+		return wrapSubscribeCallbackGeneric(cbt, cast.ToStringMap), nil
 	case func(ctx context.Context, a any) error:
-		proxy = func(ctx context.Context, e *Event) error {
+		return func(ctx context.Context, e *Event) error {
 			return cbt(ctx, e.Payload())
-		}
+		}, nil
+
+	// default
 	default:
 		// Return error for unsupported types
 		return nil, fmt.Errorf("unsupported callback type: %T", cb)
 	}
-
-	return proxy, nil
 }

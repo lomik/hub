@@ -52,29 +52,6 @@ func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.
 	return id
 }
 
-// SubscribePayload registers a new payload subscriber with topic matching
-func (h *Hub) SubscribePayload(ctx context.Context, t *Topic, cb func(ctx context.Context, payload any) error, opts ...SubscribeOption) SubID {
-	h.Lock()
-	defer h.Unlock()
-
-	id := SubID(h.seq.Add(1))
-	s := &sub{
-		id:              id,
-		topic:           t,
-		callbackPayload: cb,
-	}
-
-	for _, o := range opts {
-		if o == nil {
-			continue
-		}
-		o.modifySub(ctx, s)
-	}
-
-	h.add(ctx, s)
-	return id
-}
-
 // add adds a subscription to all relevant indexes
 func (h *Hub) add(_ context.Context, s *sub) {
 	h.all.add(s)

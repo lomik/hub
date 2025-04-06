@@ -19,18 +19,6 @@ func TestSubCall(t *testing.T) {
 		}
 	})
 
-	t.Run("payload callback", func(t *testing.T) {
-		s := &sub{
-			callbackPayload: func(ctx context.Context, p any) error {
-				return errors.New("payload error")
-			},
-		}
-		err := s.call(context.Background(), E("type=test").WithPayload("data"))
-		if err == nil || err.Error() != "payload error" {
-			t.Error("Expected payload error from callback")
-		}
-	})
-
 	t.Run("no callback", func(t *testing.T) {
 		s := &sub{}
 		err := s.call(context.Background(), E("type=test"))

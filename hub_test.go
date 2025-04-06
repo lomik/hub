@@ -32,18 +32,6 @@ func TestHubSubscribe(t *testing.T) {
 			t.Error("Expected 1 subscription after SubscribeEvent")
 		}
 	})
-
-	t.Run("SubscribePayload", func(t *testing.T) {
-		id := h.SubscribePayload(ctx, T("type=payload"), func(ctx context.Context, p any) error {
-			return nil
-		})
-		if id == 0 {
-			t.Error("Expected non-zero subscription ID")
-		}
-		if h.Len() != 2 {
-			t.Error("Expected 2 subscriptions after SubscribePayload")
-		}
-	})
 }
 
 func TestHubPublish(t *testing.T) {

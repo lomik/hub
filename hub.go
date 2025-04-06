@@ -236,22 +236,43 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 	// Include subscriptions without topic attributes
 	candidates = append(candidates, h.indexEmpty)
 
+	// Sync handling
+	if e.sync {
+		for s := range mergeSubLists(candidates...) {
+			if s.topic.Match(e.Topic()) {
+				_ = s.call(ctx, e)
+			}
+		}
+		e.finish(ctx)
+		return
+	}
+
+	// e.sync == false
+
+	// run all async and don't wait anything
+	if !e.wait && !e.hasOnFinish() {
+		for s := range mergeSubLists(candidates...) {
+			if s.topic.Match(e.Topic()) {
+				go func(s *sub) {
+					_ = s.call(ctx, e)
+				}(s)
+			}
+		}
+		return
+	}
+
+	// e.sync == false
+	// e.wait || e.hasFinish() == true
+
 	// Process matching subscriptions in parallel
 	var wg sync.WaitGroup
 	for s := range mergeSubLists(candidates...) {
 		if s.topic.Match(e.Topic()) {
 			wg.Add(1)
-			if e.sync {
-				func(s *sub) {
-					defer wg.Done()
-					_ = s.call(ctx, e)
-				}(s)
-			} else {
-				go func(s *sub) {
-					defer wg.Done()
-					_ = s.call(ctx, e)
-				}(s)
-			}
+			go func(s *sub) {
+				defer wg.Done()
+				_ = s.call(ctx, e)
+			}(s)
 		}
 	}
 

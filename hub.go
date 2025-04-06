@@ -196,33 +196,14 @@ func (h *Hub) Publish(ctx context.Context, topic *Topic, payload any, opts ...Pu
 	h.PublishEvent(ctx, E().WithTopic(topic).WithPayload(payload), opts...)
 }
 
-// PublishEvent delivers an event to all matching subscribers
-func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption) {
-	// clean once subscriptions after unlock if publish with sync=true
-	syncUnsubscribeList := make([]SubID, 0)
-	if e.sync {
-		defer func() {
-			for _, sid := range syncUnsubscribeList {
-				h.Unsubscribe(ctx, sid)
-			}
-		}()
-	}
-
-	h.RLock()
-	defer h.RUnlock()
-
-	for _, o := range opts {
-		if o == nil {
-			continue
-		}
-		e = o.modifyEvent(ctx, e)
-	}
-
+// match finds subscriptions that match the event.
+// Must be called while holding the Hub's read lock (h.RLock()).
+func (h *Hub) match(t *Topic, cb func(s *sub)) int {
 	// Collect potential candidate subscriptions lists
 	candidates := make([]*sublist, 0)
 
 	// Query indexes for each event attribute
-	e.Topic().Each(func(k, v string) {
+	t.Each(func(k, v string) {
 		// For any values add only list by key
 		if v == Any {
 			if sl, exists := h.indexKey[k]; exists {
@@ -244,72 +225,138 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 	})
 
 	// Include subscriptions without topic attributes
-	candidates = append(candidates, h.indexEmpty)
-
-	// Sync handling
-	if e.sync {
-		for s := range mergeSubLists(candidates...) {
-			if s.topic.Match(e.Topic()) {
-				_ = s.call(ctx, e)
-				// handle once
-				if s.shouldRemove() {
-					syncUnsubscribeList = append(syncUnsubscribeList, s.id)
-				}
-			}
-		}
-		e.finish(ctx)
-		return
+	if h.indexEmpty.len() > 0 {
+		candidates = append(candidates, h.indexEmpty)
 	}
 
-	// e.sync == false
-
-	// run all async and don't wait anything
-	if !e.wait && !e.hasOnFinish() {
-		for s := range mergeSubLists(candidates...) {
-			if s.topic.Match(e.Topic()) {
-				go func(s *sub) {
-					_ = s.call(ctx, e)
-					// handle once
-					if s.shouldRemove() {
-						h.Unsubscribe(ctx, s.id)
-					}
-				}(s)
-			}
-		}
-		return
-	}
-
-	// e.sync == false
-	// e.wait || e.hasFinish() == true
-
-	// Process matching subscriptions in parallel
-	var wg sync.WaitGroup
+	var matched int
 	for s := range mergeSubLists(candidates...) {
-		if s.topic.Match(e.Topic()) {
-			wg.Add(1)
-			go func(s *sub) {
-				defer func() {
-					wg.Done()
-					// handle once
-					if s.shouldRemove() {
-						h.Unsubscribe(ctx, s.id)
-					}
-				}()
-				_ = s.call(ctx, e)
-			}(s)
+		if s.topic.Match(t) {
+			matched++
+			cb(s)
 		}
 	}
+	return matched
+}
 
-	// Wait if event requires synchronous processing
-	if e.wait {
-		wg.Wait()
-		e.finish(ctx)
-	} else {
-		go func() {
-			wg.Wait()
-			e.finish(ctx)
-		}()
+// sync = true
+func (h *Hub) publishEventSync(ctx context.Context, e *Event) {
+	var unsub []SubID
+
+	h.RLock()
+	h.match(e.Topic(), func(s *sub) {
+		_ = s.call(ctx, e)
+		// handle limited subscription
+		if s.shouldRemove() {
+			unsub = append(unsub, s.id)
+		}
+	})
+	h.RUnlock()
+
+	e.finish(ctx)
+
+	for _, sid := range unsub {
+		h.Unsubscribe(ctx, sid)
 	}
+
+	return
+}
+
+// sync = false, wait = true
+func (h *Hub) publishEventAsyncWait(ctx context.Context, e *Event) {
+	var wg sync.WaitGroup
+
+	h.RLock()
+	h.match(e.Topic(), func(s *sub) {
+		wg.Add(1)
+		go func(s *sub) {
+			_ = s.call(ctx, e)
+			wg.Done()
+			// handle limited subscription
+			if s.shouldRemove() {
+				// will remove after unlock
+				h.Unsubscribe(ctx, s.id)
+			}
+		}(s)
+	})
+	h.RUnlock()
+
+	wg.Wait()
+	e.finish(ctx)
+}
+
+// sync = false, wait = false, hasOnFinish = true
+func (h *Hub) publishEventAsyncNoWaitFinish(ctx context.Context, e *Event) {
+	var wg sync.WaitGroup
+	var once sync.Once
+
+	h.RLock()
+	n := h.match(e.Topic(), func(s *sub) {
+		go func(s *sub) {
+			_ = s.call(ctx, e)
+			wg.Done()
+
+			once.Do(func() {
+				wg.Wait()
+				e.finish(ctx)
+			})
+
+			// handle limited subscription
+			if s.shouldRemove() {
+				// will remove after unlock
+				h.Unsubscribe(ctx, s.id)
+			}
+		}(s)
+	})
+	h.RUnlock()
+
+	if n == 0 {
+		go e.finish(ctx)
+	}
+}
+
+// sync = false, wait = false, hasOnFinish = false
+func (h *Hub) publishEventAsyncNoWaitNoFinish(ctx context.Context, e *Event) {
+	// run all async and don't wait anything
+	h.RLock()
+	h.match(e.Topic(), func(s *sub) {
+		go func(s *sub) {
+			_ = s.call(ctx, e)
+			// handle limited subscription
+			if s.shouldRemove() {
+				// will remove after unlock
+				h.Unsubscribe(ctx, s.id)
+			}
+		}(s)
+	})
+	h.RUnlock()
+}
+
+// PublishEvent delivers an event to all matching subscribers
+func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption) {
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		e = o.modifyEvent(ctx, e)
+	}
+
+	if e.sync {
+		h.publishEventSync(ctx, e)
+		return
+	}
+
+	if e.wait {
+		h.publishEventAsyncWait(ctx, e)
+		return
+	}
+
+	if e.hasOnFinish() {
+		h.publishEventAsyncNoWaitFinish(ctx, e)
+		return
+	}
+
+	h.publishEventAsyncNoWaitNoFinish(ctx, e)
 }
 
 // Unsubscribe removes a subscription by ID

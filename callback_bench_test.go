@@ -70,57 +70,86 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 		payload: "test payload",
 	}
 
-	// Тестовые callback-функции разных типов
+	// direct
 	noopMinimal := func(ctx context.Context) error { return nil }
 	noopPayload := func(ctx context.Context, payload any) error { return nil }
+	noopPayloadString := func(ctx context.Context, payload string) error { return nil }
 	noopTopicPayload := func(ctx context.Context, topic *Topic, payload any) error { return nil }
 	noopEvent := func(ctx context.Context, e *Event) error { return nil }
 
-	// Обернутые версии
+	// wrapped
 	minimalProxy, _ := WrapSubscribeCallback(ctx, noopMinimal)
 	payloadProxy, _ := WrapSubscribeCallback(ctx, noopPayload)
+	payloadStringProxy, _ := WrapSubscribeCallback(ctx, noopPayloadString)
 	topicPayloadProxy, _ := WrapSubscribeCallback(ctx, noopTopicPayload)
 	eventProxy, _ := WrapSubscribeCallback(ctx, noopEvent)
 
-	b.Run("Minimal", func(b *testing.B) {
+	// basic
+	b.Run("Direct/Minimal", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = noopMinimal(ctx)
+		}
+	})
+
+	b.Run("Wrapped/Minimal", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = minimalProxy(ctx, event)
 		}
 	})
 
-	b.Run("Payload", func(b *testing.B) {
+	b.Run("Direct/Event", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = payloadProxy(ctx, event)
+			_ = noopEvent(ctx, event)
 		}
 	})
 
-	b.Run("Topic+Payload", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = topicPayloadProxy(ctx, event)
-		}
-	})
-
-	b.Run("Event", func(b *testing.B) {
+	b.Run("Wrapped/Event", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = eventProxy(ctx, event)
 		}
 	})
 
-	// Бенчмарк с реальной работой в callback
-	b.Run("PayloadWithWork", func(b *testing.B) {
-		cb := func(ctx context.Context, payload any) error {
-			// Имитация полезной нагрузки
-			s := payload.(string)
-			if len(s) > 0 {
-				return nil
-			}
-			return errors.New("empty payload")
-		}
-		proxy, _ := WrapSubscribeCallback(ctx, cb)
-
-		b.ResetTimer()
+	b.Run("Wrapped/Payload", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = proxy(ctx, event)
+			_ = payloadProxy(ctx, event)
+		}
+	})
+
+	b.Run("Direct/PayloadString", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = noopPayloadString(ctx, "")
+		}
+	})
+
+	b.Run("Wrapped/PayloadString", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = payloadStringProxy(ctx, event)
+		}
+	})
+
+	b.Run("Wrapped/TopicPayload", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = topicPayloadProxy(ctx, event)
+		}
+	})
+
+	// with non-noop
+	processPayload := func(ctx context.Context, payload any) error {
+		s, ok := payload.(string)
+		if !ok {
+			return errors.New("invalid payload")
+		}
+		if len(s) < 10 {
+			return nil
+		}
+		return errors.New("payload too long")
+	}
+
+	processPayloadProxy, _ := WrapSubscribeCallback(ctx, processPayload)
+
+	b.Run("Wrapped/RealPayload", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = processPayloadProxy(ctx, event)
 		}
 	})
 }

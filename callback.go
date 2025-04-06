@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+
+	"github.com/spf13/cast"
 )
 
 // WrapSubscribeCallback converts various callback signatures into a standardized Event handler.
@@ -72,28 +74,53 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 	switch {
 	case numIn == 1:
 		// Format: func(ctx context.Context) error
+		cbFunc := cb.(func(ctx context.Context) error)
 		proxy = func(ctx context.Context, e *Event) error {
-			out := cbVal.Call([]reflect.Value{reflect.ValueOf(ctx)})
-			if err := out[0].Interface(); err != nil {
-				return err.(error)
-			}
-			return nil
+			return cbFunc(ctx)
 		}
 
 	case numIn == 2:
 		// Check second parameter type
-		switch cbType.In(1) {
+		switch paramType := cbType.In(1); paramType {
 		case reflect.TypeOf((*Event)(nil)):
-			// Format: func(ctx context.Context, e *Event) error
+			cbFunc := cb.(func(ctx context.Context, e *Event) error)
 			proxy = func(ctx context.Context, e *Event) error {
-				out := cbVal.Call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(e)})
-				if err := out[0].Interface(); err != nil {
-					return err.(error)
-				}
-				return nil
+				return cbFunc(ctx, e)
 			}
+
+		case reflect.TypeOf((*Topic)(nil)):
+			return nil, fmt.Errorf("unexpected *Topic as second parameter")
+
+		// optimized for some types
+		case reflect.TypeOf(string("")):
+			cbFunc := cb.(func(ctx context.Context, s string) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(string); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToString(e.Payload()))
+			}
+
+		case reflect.TypeOf(int(0)):
+			cbFunc := cb.(func(ctx context.Context, i int) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(int); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToInt(e.Payload()))
+			}
+
+		case reflect.TypeOf(bool(false)):
+			cbFunc := cb.(func(ctx context.Context, b bool) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(bool); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToBool(e.Payload()))
+			}
+
 		default:
-			// Format: func(ctx context.Context, payload any) error
+			// common with reflection
 			proxy = func(ctx context.Context, e *Event) error {
 				out := cbVal.Call([]reflect.Value{
 					reflect.ValueOf(ctx),

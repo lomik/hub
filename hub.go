@@ -114,7 +114,7 @@ func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.
 // - The generic 'any' signature provides flexibility at small performance cost
 // - All type validation occurs during subscription, not event delivery
 func (h *Hub) Subscribe(ctx context.Context, t *Topic, cb interface{}, opts ...SubscribeOption) (SubID, error) {
-	eventCb, err := wrapSubscribeCallback(ctx, cb)
+	eventCb, err := h.WrapSubscribeCallback(ctx, cb)
 	if err != nil {
 		return 0, err
 	}

@@ -17,8 +17,8 @@ func wrapSubscribeCallbackGeneric[T any](cb func(context.Context, T) error, cast
 	}
 }
 
-// wrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
-func wrapSubscribeCallback(_ context.Context, cb any) (func(ctx context.Context, e *Event) error, error) {
+// WrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
+func (h *Hub) WrapSubscribeCallback(_ context.Context, cb any) (func(ctx context.Context, e *Event) error, error) {
 	switch cbt := cb.(type) {
 	case func(ctx context.Context) error:
 		return func(ctx context.Context, e *Event) error {

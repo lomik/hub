@@ -10,6 +10,7 @@ import (
 
 func TestWrapSubscribeCallback(t *testing.T) {
 	t.Parallel()
+	h := New()
 
 	ctx := context.Background()
 
@@ -123,7 +124,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := wrapSubscribeCallback(ctx, tt.cb)
+			_, err := h.WrapSubscribeCallback(ctx, tt.cb)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("wrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -137,6 +138,8 @@ func TestWrapSubscribeCallback(t *testing.T) {
 
 func TestWrappedCallbackExecution(t *testing.T) {
 	t.Parallel()
+
+	h := New()
 
 	ctx := context.Background()
 	testCases := []struct {
@@ -216,7 +219,7 @@ func TestWrappedCallbackExecution(t *testing.T) {
 				payload: tc.payload,
 			}
 
-			proxy, err := wrapSubscribeCallback(ctx, tc.cb)
+			proxy, err := h.WrapSubscribeCallback(ctx, tc.cb)
 			if err != nil {
 				t.Fatalf("wrapSubscribeCallback failed: %v", err)
 			}

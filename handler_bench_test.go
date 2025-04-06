@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func BenchmarkWrapSubscribeCallback(b *testing.B) {
+func BenchmarkToHandler(b *testing.B) {
 	ctx := context.Background()
 	h := New()
 
@@ -48,11 +48,11 @@ func BenchmarkWrapSubscribeCallback(b *testing.B) {
 	for _, cb := range callbacks {
 		b.Run("Wrap_"+cb.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = h.WrapSubscribeCallback(ctx, cb.fn)
+				_, _ = h.ToHandler(ctx, cb.fn)
 			}
 		})
 
-		proxy, err := h.WrapSubscribeCallback(ctx, cb.fn)
+		proxy, err := h.ToHandler(ctx, cb.fn)
 		if err != nil {
 			b.Fatalf("Wrap failed: %v", err)
 		}
@@ -80,10 +80,10 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 	noopEvent := func(ctx context.Context, e *Event) error { return nil }
 
 	// wrapped
-	minimalProxy, _ := h.WrapSubscribeCallback(ctx, noopMinimal)
-	payloadProxy, _ := h.WrapSubscribeCallback(ctx, noopPayload)
-	payloadStringProxy, _ := h.WrapSubscribeCallback(ctx, noopPayloadString)
-	eventProxy, _ := h.WrapSubscribeCallback(ctx, noopEvent)
+	minimalProxy, _ := h.ToHandler(ctx, noopMinimal)
+	payloadProxy, _ := h.ToHandler(ctx, noopPayload)
+	payloadStringProxy, _ := h.ToHandler(ctx, noopPayloadString)
+	eventProxy, _ := h.ToHandler(ctx, noopEvent)
 
 	// basic
 	b.Run("Direct/Minimal", func(b *testing.B) {
@@ -140,7 +140,7 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 		return errors.New("payload too long")
 	}
 
-	processPayloadProxy, _ := h.WrapSubscribeCallback(ctx, processPayload)
+	processPayloadProxy, _ := h.ToHandler(ctx, processPayload)
 
 	b.Run("Wrapped/RealPayload", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {

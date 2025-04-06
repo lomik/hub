@@ -6,6 +6,20 @@ import (
 	"sync/atomic"
 )
 
+// Handler defines a function signature for processing events in the hub.
+// It receives a context for cancellation/timeout and the event to process.
+// Return an error to indicate processing failure.
+//
+// Usage:
+//
+//	var myHandler Handler = func(ctx context.Context, e *Event) error {
+//	    log.Printf("Processing event: %s", e.Topic())
+//	    return nil // Return nil on success
+//	}
+//
+//	h.SubscribeEvent(ctx, topic, myHandler)
+type Handler func(ctx context.Context, e *Event) error
+
 // Hub implements a pub/sub system with optimized subscription matching
 // using multi-level indexes for efficient event distribution
 type Hub struct {
@@ -17,6 +31,9 @@ type Hub struct {
 	indexKeyValue map[string]map[string]*sublist // Exact key-value pair index
 	indexKey      map[string]*sublist            // Wildcard value index (key=*)
 	indexEmpty    *sublist                       // Subscriptions without topic attributes
+
+	// customize
+	onCallback [](func(cb any) (Handler, error))
 }
 
 // New creates and initializes a new Hub instance
@@ -30,7 +47,7 @@ func New() *Hub {
 }
 
 // SubscribeEvent registers a new event subscriber with topic matching
-func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.Context, e *Event) error, opts ...SubscribeOption) SubID {
+func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb Handler, opts ...SubscribeOption) SubID {
 	h.Lock()
 	defer h.Unlock()
 
@@ -114,7 +131,7 @@ func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.
 // - The generic 'any' signature provides flexibility at small performance cost
 // - All type validation occurs during subscription, not event delivery
 func (h *Hub) Subscribe(ctx context.Context, t *Topic, cb interface{}, opts ...SubscribeOption) (SubID, error) {
-	eventCb, err := h.WrapSubscribeCallback(ctx, cb)
+	eventCb, err := h.ToHandler(ctx, cb)
 	if err != nil {
 		return 0, err
 	}

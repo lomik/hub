@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestWrapSubscribeCallback(t *testing.T) {
+func TestToHandler(t *testing.T) {
 	t.Parallel()
 	h := New()
 
@@ -124,9 +124,9 @@ func TestWrapSubscribeCallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := h.WrapSubscribeCallback(ctx, tt.cb)
+			_, err := h.ToHandler(ctx, tt.cb)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("wrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ToHandler() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr && tt.errContains != "" && !contains(err.Error(), tt.errContains) {
@@ -219,9 +219,9 @@ func TestWrappedCallbackExecution(t *testing.T) {
 				payload: tc.payload,
 			}
 
-			proxy, err := h.WrapSubscribeCallback(ctx, tc.cb)
+			proxy, err := h.ToHandler(ctx, tc.cb)
 			if err != nil {
-				t.Fatalf("wrapSubscribeCallback failed: %v", err)
+				t.Fatalf("ToHandler failed: %v", err)
 			}
 
 			err = proxy(ctx, event)

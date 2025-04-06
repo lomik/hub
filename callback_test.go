@@ -123,9 +123,9 @@ func TestWrapSubscribeCallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := WrapSubscribeCallback(ctx, tt.cb)
+			_, err := wrapSubscribeCallback(ctx, tt.cb)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("WrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("wrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr && tt.errContains != "" && !contains(err.Error(), tt.errContains) {
@@ -216,9 +216,9 @@ func TestWrappedCallbackExecution(t *testing.T) {
 				payload: tc.payload,
 			}
 
-			proxy, err := WrapSubscribeCallback(ctx, tc.cb)
+			proxy, err := wrapSubscribeCallback(ctx, tc.cb)
 			if err != nil {
-				t.Fatalf("WrapSubscribeCallback failed: %v", err)
+				t.Fatalf("wrapSubscribeCallback failed: %v", err)
 			}
 
 			err = proxy(ctx, event)

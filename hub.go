@@ -52,6 +52,76 @@ func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb func(ctx context.
 	return id
 }
 
+// Subscribe registers an event handler with flexible callback signature options.
+// It provides a more convenient interface than SubscribeEvent by automatically
+// wrapping different callback signatures while maintaining type safety.
+//
+// Supported callback formats:
+//  1. Minimal:      func(ctx context.Context) error
+//  2. Event style:  func(ctx context.Context, e *Event) error
+//  3. Typed payload: func(ctx context.Context, payload Type) error
+//  4. Generic payload: func(ctx context.Context, payload any) error
+//
+// Supported payload types (Type):
+//   - All integer types (int8-int64, uint8-uint64)
+//   - Floating point (float32, float64)
+//   - String and boolean
+//   - Time types (time.Time, time.Duration)
+//   - Common collections ([]string, map[string]any)
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeouts
+//   - t: Topic to subscribe to (use hub.T() for all events)
+//   - cb: Callback function in one of supported formats
+//   - opts: Optional subscription settings (e.g., Once for single delivery)
+//
+// Returns:
+//   - Subscription ID that can be used for unsubscribing
+//   - Error if:
+//   - Callback signature is invalid
+//   - Topic is nil
+//   - Unsupported parameter type in callback
+//
+// Behavior:
+//   - For typed callbacks, attempts direct type assertion first
+//   - Falls back to automatic conversion using spf13/cast
+//   - Returns conversion errors during event delivery
+//   - Supports all standard SubscribeOption configurations
+//
+// Example usage:
+//
+//	// Minimal callback
+//	id, err := hub.Subscribe(ctx, topic, func(ctx context.Context) error {
+//	    return nil
+//	})
+//
+//	// Typed payload
+//	id, err := hub.Subscribe(ctx, topic, func(ctx context.Context, id int) error {
+//	    log.Printf("Processing ID: %d", id)
+//	    return nil
+//	})
+//
+//	// With options
+//	id, err := hub.Subscribe(ctx, topic,
+//	    func(ctx context.Context, msg string) error {
+//	        return nil
+//	    },
+//	    hub.Once(true), // Auto-unsubscribe after first event
+//	)
+//
+// Notes:
+// - Prefer specific typed callbacks when possible for better performance
+// - The generic 'any' signature provides flexibility at small performance cost
+// - All type validation occurs during subscription, not event delivery
+func (h *Hub) Subscribe(ctx context.Context, t *Topic, cb interface{}, opts ...SubscribeOption) (SubID, error) {
+	eventCb, err := wrapSubscribeCallback(ctx, cb)
+	if err != nil {
+		return 0, err
+	}
+
+	return h.SubscribeEvent(ctx, t, eventCb, opts...), nil
+}
+
 // add adds a subscription to all relevant indexes
 func (h *Hub) add(_ context.Context, s *sub) {
 	h.all.add(s)
@@ -78,6 +148,52 @@ func (h *Hub) add(_ context.Context, s *sub) {
 	if s.topic.Len() == 0 {
 		h.indexEmpty.add(s)
 	}
+}
+
+// Publish sends an event to all subscribers of the specified topic with the given payload.
+// It provides a simplified interface compared to PublishEvent by automatically creating
+// the Event structure for common use cases.
+//
+// Parameters:
+//   - ctx:       Context for cancellation and timeouts
+//   - topic:     Destination topic for the event (required)
+//   - payload:   Event data (can be any type)
+//   - opts:      Optional publishing settings:
+//   - hub.Wait(true) - wait for all handlers to complete
+//   - hub.Sync(true) - process handlers synchronously
+//   - hub.OnFinish() - add completion callback
+//
+// Behavior:
+//   - Creates a new Event with the provided topic and payload
+//   - Applies all specified PublishOptions
+//   - Delivers to all matching subscribers
+//   - Handles payload conversion automatically when subscribers use typed callbacks
+//
+// Example usage:
+//
+//	// Simple publish
+//	hub.Publish(ctx,
+//	    hub.T("type=alert", "priority=high"),
+//	    "server is down",
+//	)
+//
+//	// With options
+//	hub.Publish(ctx,
+//	    hub.T("type=metrics"),
+//	    map[string]any{"cpu": 85, "mem": 45},
+//	    hub.Wait(true),          // Wait for processing
+//	    hub.OnFinish(func(ctx context.Context, e *hub.Event) {
+//	        log.Println("Event processed")
+//	    }),
+//	)
+//
+// Notes:
+// - For advanced event configuration, use PublishEvent directly
+// - The payload will be automatically converted when subscribers use typed callbacks
+// - Topic is required (use hub.T() to create topics)
+// - Safe for concurrent use
+func (h *Hub) Publish(ctx context.Context, topic *Topic, payload any, opts ...PublishOption) {
+	h.PublishEvent(ctx, E().WithTopic(topic).WithPayload(payload), opts...)
 }
 
 // PublishEvent delivers an event to all matching subscribers

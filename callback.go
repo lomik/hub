@@ -9,72 +9,8 @@ import (
 	"github.com/spf13/cast"
 )
 
-// WrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
-// It provides optimized type conversion for supported payload types while maintaining strict type safety.
-//
-// Supported callback formats:
-//  1. Minimal:      func(ctx context.Context) error
-//  2. Event style:  func(ctx context.Context, e *Event) error
-//  3. Typed payload: func(ctx context.Context, payload Type) error
-//  4. Generic payload: func(ctx context.Context, payload any) error
-//
-// Supported payload types (Type):
-//   - All integer types (int, int8, int16, int32, int64)
-//   - All unsigned integer types (uint, uint8, uint16, uint32, uint64)
-//   - Floating point (float32, float64)
-//   - String and boolean (string, bool)
-//   - Time and duration (time.Time, time.Duration)
-//   - Common collections ([]string, map[string]interface{})
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeouts
-//   - cb: The callback function to wrap (must match one of supported signatures)
-//
-// Returns:
-//   - A normalized function with signature func(context.Context, *Event) error
-//   - An error if:
-//   - Callback is not a function
-//   - Invalid return type (must return exactly error)
-//   - Invalid parameter count (must be 1-2 parameters)
-//   - First parameter is not context.Context
-//   - Unsupported parameter type (with details)
-//
-// Conversion behavior:
-//   - For supported types, attempts direct type assertion first
-//   - Falls back to github.com/spf13/cast conversion if needed
-//   - Ignore conversion errors from cast package
-//   - For 'any' type, passes payload through without conversion
-//
-// Example usage:
-//
-//	// Minimal callback
-//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context) error {
-//	    return nil
-//	})
-//
-//	// Event handler
-//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, e *Event) error {
-//	    fmt.Printf("Event on %s: %v", e.Topic(), e.Payload())
-//	    return nil
-//	})
-//
-//	// Typed payload
-//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, id int) error {
-//	    fmt.Printf("Processing ID: %d", id)
-//	    return nil
-//	})
-//
-//	// Generic payload
-//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, data any) error {
-//	    // Handle any payload type
-//	    return nil
-//	})
-//
-// Notes:
-// - The function performs all type validation during wrapping, not during event processing
-// - For maximum performance with known types, use the specific typed signatures
-// - The generic 'any' signature provides flexibility at a small performance cost
-func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx context.Context, e *Event) error, error) {
+// wrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
+func wrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx context.Context, e *Event) error, error) {
 	cbVal := reflect.ValueOf(cb)
 	if cbVal.Kind() != reflect.Func {
 		return nil, fmt.Errorf("callback must be a function")

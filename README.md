@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/lomik/hub.svg)](https://pkg.go.dev/github.com/lomik/hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Hub is a high-performance publish-subscribe event hub for Go applications, featuring:
+Hub is a publish-subscribe event hub for Go applications, featuring:
 
 - **Topic-based routing** with key-value attributes
 - **Efficient matching** using multi-level indexes
@@ -34,49 +34,95 @@ func main() {
 ```
 
 ### Publishing Events
+
+The `Publish` method provides a streamlined way to send events:
+
 ```go
-// Simple event
-h.PublishEvent(ctx, hub.E("type=alert"))
+// Simple event with string payload
+h.Publish(ctx, 
+    hub.T("type=alert", "priority=high"),
+    "Server CPU overload",
+)
 
-// With payload
-h.PublishEvent(ctx, hub.E("type=alert").WithPayload(map[string]any{
-    "message": "Server down!",
-    "code":    500,
-}))
-
-// With options
-h.PublishEvent(ctx, hub.E("type=metrics"), 
-    hub.Wait(true),       // Wait for all handlers
-    hub.Sync(true),       // Process synchronously
-    hub.OnFinish(func(ctx context.Context, e *hub.Event) {
-        // Cleanup logic
-    }),
+// With structured data and options
+h.Publish(ctx,
+    hub.T("type=metrics", "source=api"),
+    map[string]any{
+        "cpu": 85.2,
+        "mem": 45.7,
+    },
+    hub.Wait(true), // Wait for handlers
+    hub.Sync(true), // Process synchronously
 )
 ```
 
 ### Subscribing to Events
+The `Subscribe` method supports flexible callback signatures:
+
 ```go
-// Subscribe to all events
-subID := h.SubscribeEvent(ctx, hub.T(), func(ctx context.Context, e *hub.Event) error {
-    fmt.Printf("Received event: %+v\n", e)
+// Minimal callback
+id1, _ := h.Subscribe(ctx, hub.T("type=alert"), func(ctx context.Context) error {
+    log.Println("Alert received")
     return nil
 })
 
-// Subscribe to specific topic
-h.SubscribeEvent(ctx, hub.T("type=alert"), func(ctx context.Context, e *hub.Event) error {
-    alert := e.Payload().(map[string]any)
-    fmt.Println("ALERT:", alert["message"])
+// Typed payload
+id2, _ := h.Subscribe(ctx, hub.T("type=metrics"), func(ctx context.Context, stats map[string]float64) error {
+    log.Printf("CPU: %.1f%%, Mem: %.1f%%", stats["cpu"], stats["mem"])
     return nil
 })
 
-// One-time subscription
-h.SubscribeEvent(ctx, hub.T("type=metrics"), func(ctx context.Context, e *hub.Event) error {
-    recordMetrics(e.Payload())
+// Generic payload
+id3, _ := h.Subscribe(ctx, hub.T(), func(ctx context.Context, payload any) error {
+    log.Printf("Event received: %T", payload)
     return nil
-}, hub.Once(true))
+})
 ```
 
-### Advanced Patterns
+### Complete Example
+```go
+h := hub.New()
+
+// Subscribe to metrics
+h.Subscribe(ctx, hub.T("type=metrics"), func(ctx context.Context, m map[string]any) error {
+    log.Printf("Metrics: %+v", m)
+    return nil
+})
+
+// Publish metrics
+h.Publish(ctx,
+    hub.T("type=metrics"),
+    map[string]any{
+        "requests": 1423,
+        "errors":   27,
+    },
+)
+
+// Unsubscribe later
+h.Unsubscribe(ctx, id)
+```
+
+## Advanced Usage
+For more control, use the `SubscribeEvent` and `PublishEvent` methods:
+```go
+// Create event with options
+event := hub.E("type=alert", "urgent=true").
+    WithPayload("System failure").
+    WithOnFinish(func(ctx context.Context, e *hub.Event) {
+        log.Println("Event processed")
+    })
+
+// Subscribe with exact event matching
+h.SubscribeEvent(ctx, hub.T("type=alert"), func(ctx context.Context, e *hub.Event) error {
+    log.Printf("Alert: %s", e.Payload())
+    return nil
+})
+
+// Publish with ful options
+h.PublishEvent(ctx, event, hub.Wait(true))
+```
+
+### Patterns
 
 #### Topic Matching
 ```go

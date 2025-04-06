@@ -3,124 +3,87 @@ package hub
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/spf13/cast"
 )
 
-func wrapSubscribeCallbackGeneric[T any](cb any, castFunc func(any) T) func(ctx context.Context, e *Event) error {
-	cbFunc := cb.(func(context.Context, T) error)
+func wrapSubscribeCallbackGeneric[T any](cb func(context.Context, T) error, castFunc func(any) T) func(ctx context.Context, e *Event) error {
 	return func(ctx context.Context, e *Event) error {
 		if v, ok := e.Payload().(T); ok {
-			return cbFunc(ctx, v)
+			return cb(ctx, v)
 		}
-		return cbFunc(ctx, castFunc(e.Payload()))
+		return cb(ctx, castFunc(e.Payload()))
 	}
 }
 
 // wrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
-func wrapSubscribeCallback(ctx context.Context, cb any) (func(ctx context.Context, e *Event) error, error) {
-	cbVal := reflect.ValueOf(cb)
-	if cbVal.Kind() != reflect.Func {
-		return nil, fmt.Errorf("callback must be a function")
-	}
-
-	cbType := cbVal.Type()
-
-	// Validate return type
-	if cbType.NumOut() != 1 || !cbType.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-		return nil, fmt.Errorf("callback must return exactly one error value")
-	}
-
-	// Validate input parameters
-	numIn := cbType.NumIn()
-	if numIn < 1 || numIn > 2 {
-		return nil, fmt.Errorf("callback must have 1-2 parameters")
-	}
-
-	// First parameter must be context.Context
-	if cbType.In(0) != reflect.TypeOf((*context.Context)(nil)).Elem() {
-		return nil, fmt.Errorf("first parameter must be context.Context")
-	}
-
+func wrapSubscribeCallback(_ context.Context, cb any) (func(ctx context.Context, e *Event) error, error) {
 	var proxy func(context.Context, *Event) error
 
-	switch {
-	case numIn == 1:
-		// Format: func(ctx context.Context) error
-		cbFunc := cb.(func(ctx context.Context) error)
+	switch cbt := cb.(type) {
+	case func(ctx context.Context) error:
 		proxy = func(ctx context.Context, e *Event) error {
-			return cbFunc(ctx)
+			return cbt(ctx)
 		}
 
-	case numIn == 2:
-		// Format:
-		// func(ctx context.Context, e *Event) error
-		// func(ctx context.Context, payload Type) error
+	case func(context.Context, *Event) error:
+		proxy = cbt
 
-		switch paramType := cbType.In(1); paramType {
-		case reflect.TypeOf((*Event)(nil)):
-			proxy = cb.(func(ctx context.Context, e *Event) error)
+	// Numeric types
+	case func(context.Context, int) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt)
+	case func(context.Context, int8) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt8)
+	case func(context.Context, int16) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt16)
+	case func(context.Context, int32) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt32)
+	case func(context.Context, int64) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToInt64)
 
-		// Numeric types
-		case reflect.TypeOf(int(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToInt)
-		case reflect.TypeOf(int8(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToInt8)
-		case reflect.TypeOf(int16(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToInt16)
-		case reflect.TypeOf(int32(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToInt32)
-		case reflect.TypeOf(int64(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToInt64)
+	// Unsigned integers
+	case func(context.Context, uint) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint)
+	case func(context.Context, uint8) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint8)
+	case func(context.Context, uint16) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint16)
+	case func(context.Context, uint32) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint32)
+	case func(context.Context, uint64) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToUint64)
 
-		// Unsigned integers
-		case reflect.TypeOf(uint(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToUint)
-		case reflect.TypeOf(uint8(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToUint8)
-		case reflect.TypeOf(uint16(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToUint16)
-		case reflect.TypeOf(uint32(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToUint32)
-		case reflect.TypeOf(uint64(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToUint64)
+	// Floating point
+	case func(context.Context, float32) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToFloat32)
+	case func(context.Context, float64) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToFloat64)
 
-		// Floating point
-		case reflect.TypeOf(float32(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToFloat32)
-		case reflect.TypeOf(float64(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToFloat64)
+	// String and bool
+	case func(context.Context, string) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToString)
+	case func(context.Context, bool) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToBool)
 
-		// String and bool
-		case reflect.TypeOf(string("")):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToString)
-		case reflect.TypeOf(bool(false)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToBool)
+	// Time and duration
+	case func(context.Context, time.Time) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToTime)
+	case func(context.Context, time.Duration) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToDuration)
 
-		// Time and duration
-		case reflect.TypeOf(time.Time{}):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToTime)
-		case reflect.TypeOf(time.Duration(0)):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToDuration)
-
-		// Slices and maps
-		case reflect.TypeOf([]string{}):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToStringSlice)
-		case reflect.TypeOf(map[string]any{}):
-			proxy = wrapSubscribeCallbackGeneric(cb, cast.ToStringMap)
-
-		default:
-			if cbFunc, ok := cb.(func(ctx context.Context, a any) error); ok {
-				proxy = func(ctx context.Context, e *Event) error {
-					return cbFunc(ctx, e.Payload())
-				}
-			} else {
-				// Return error for unsupported types
-				return nil, fmt.Errorf("unsupported parameter type: %v", paramType)
-			}
+	// Slices and maps
+	case func(context.Context, []string) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToStringSlice)
+	case func(context.Context, map[string]any) error:
+		proxy = wrapSubscribeCallbackGeneric(cbt, cast.ToStringMap)
+	case func(ctx context.Context, a any) error:
+		proxy = func(ctx context.Context, e *Event) error {
+			return cbt(ctx, e.Payload())
 		}
+	default:
+		// Return error for unsupported types
+		return nil, fmt.Errorf("unsupported callback type: %T", cb)
 	}
 
 	return proxy, nil

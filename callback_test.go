@@ -24,7 +24,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 			name:        "not a function",
 			cb:          "not a function",
 			wantErr:     true,
-			errContains: "callback must be a function",
+			errContains: "unsupported callback type: string",
 		},
 		{
 			name: "invalid return type",
@@ -32,7 +32,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 				return "not an error"
 			},
 			wantErr:     true,
-			errContains: "callback must return exactly one error value",
+			errContains: "unsupported callback type: func(context.Context) string",
 		},
 		{
 			name: "no parameters",
@@ -40,7 +40,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 				return nil
 			},
 			wantErr:     true,
-			errContains: "callback must have 1-2 parameters",
+			errContains: "unsupported callback type: func() error",
 		},
 		{
 			name: "wrong first parameter",
@@ -48,7 +48,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 				return nil
 			},
 			wantErr:     true,
-			errContains: "first parameter must be context.Context",
+			errContains: "unsupported callback type: func(string) error",
 		},
 		{
 			name: "unsupported type",
@@ -56,7 +56,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 				return nil
 			},
 			wantErr:     true,
-			errContains: "unsupported parameter type",
+			errContains: "unsupported callback type: func(context.Context, chan int) error",
 		},
 
 		// Valid callbacks

@@ -52,7 +52,7 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 	cbType := cbVal.Type()
 
 	// Validate return type
-	if cbType.NumOut() != 1 || cbType.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+	if cbType.NumOut() != 1 || !cbType.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
 		return nil, fmt.Errorf("callback must return exactly one error value")
 	}
 
@@ -74,7 +74,10 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 		// Format: func(ctx context.Context) error
 		proxy = func(ctx context.Context, e *Event) error {
 			out := cbVal.Call([]reflect.Value{reflect.ValueOf(ctx)})
-			return out[0].Interface().(error)
+			if err := out[0].Interface(); err != nil {
+				return err.(error)
+			}
+			return nil
 		}
 
 	case numIn == 2:
@@ -84,7 +87,10 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 			// Format: func(ctx context.Context, e *Event) error
 			proxy = func(ctx context.Context, e *Event) error {
 				out := cbVal.Call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(e)})
-				return out[0].Interface().(error)
+				if err := out[0].Interface(); err != nil {
+					return err.(error)
+				}
+				return nil
 			}
 		default:
 			// Format: func(ctx context.Context, payload any) error
@@ -93,7 +99,10 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 					reflect.ValueOf(ctx),
 					reflect.ValueOf(e.Payload()),
 				})
-				return out[0].Interface().(error)
+				if err := out[0].Interface(); err != nil {
+					return err.(error)
+				}
+				return nil
 			}
 		}
 
@@ -109,7 +118,10 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 				reflect.ValueOf(e.Topic()),
 				reflect.ValueOf(e.Payload()),
 			})
-			return out[0].Interface().(error)
+			if err := out[0].Interface(); err != nil {
+				return err.(error)
+			}
+			return nil
 		}
 	}
 

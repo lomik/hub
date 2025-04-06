@@ -80,7 +80,7 @@ func TestWrapSubscribeCallback(t *testing.T) {
 			},
 			wantErr: true,
 			checkErr: func(t *testing.T, err error) {
-				if err == nil || err.Error() != "callback must have 1-3 parameters" {
+				if err == nil || err.Error() != "second parameter must be *Topic when using three parameters" {
 					t.Errorf("expected param count error, got %v", err)
 				}
 			},

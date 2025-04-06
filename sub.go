@@ -25,3 +25,7 @@ func (s *sub) call(ctx context.Context, e *Event) error {
 	}
 	return nil
 }
+
+func (s *sub) shouldRemove() bool {
+	return s.once && s.counter.Load() > 0
+}

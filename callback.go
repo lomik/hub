@@ -4,47 +4,76 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/spf13/cast"
 )
 
-// WrapSubscribeCallback converts various callback signatures into a standardized Event handler.
-//
-// This function accepts different callback styles and returns a normalized function with
-// signature func(context.Context, *Event) error that can be used with SubscribeEvent.
+// WrapSubscribeCallback converts various callback signatures into a standardized Event handler function.
+// It provides optimized type conversion for supported payload types while maintaining strict type safety.
 //
 // Supported callback formats:
 //  1. Minimal:      func(ctx context.Context) error
-//  2. Payload-only: func(ctx context.Context, payload any) error
-//  3. Full context: func(ctx context.Context, topic *Topic, payload any) error
-//  4. Event style:  func(ctx context.Context, e *Event) error
+//  2. Event style:  func(ctx context.Context, e *Event) error
+//  3. Typed payload: func(ctx context.Context, payload Type) error
+//  4. Generic payload: func(ctx context.Context, payload any) error
+//
+// Supported payload types (Type):
+//   - All integer types (int, int8, int16, int32, int64)
+//   - All unsigned integer types (uint, uint8, uint16, uint32, uint64)
+//   - Floating point (float32, float64)
+//   - String and boolean (string, bool)
+//   - Time and duration (time.Time, time.Duration)
+//   - Common collections ([]string, map[string]interface{})
 //
 // Parameters:
-//   - ctx: Context for cancellation and timeouts (passed through to callback)
-//   - cb:  The callback function to wrap (must match one of supported signatures)
+//   - ctx: Context for cancellation and timeouts
+//   - cb: The callback function to wrap (must match one of supported signatures)
 //
 // Returns:
 //   - A normalized function with signature func(context.Context, *Event) error
-//   - An error if the callback signature is invalid
+//   - An error if:
+//   - Callback is not a function
+//   - Invalid return type (must return exactly error)
+//   - Invalid parameter count (must be 1-2 parameters)
+//   - First parameter is not context.Context
+//   - Unsupported parameter type (with details)
+//
+// Conversion behavior:
+//   - For supported types, attempts direct type assertion first
+//   - Falls back to github.com/spf13/cast conversion if needed
+//   - Ignore conversion errors from cast package
+//   - For 'any' type, passes payload through without conversion
 //
 // Example usage:
 //
-//	// As payload handler
-//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, data any) error {
-//	    fmt.Println("Received:", data)
+//	// Minimal callback
+//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context) error {
 //	    return nil
 //	})
 //
-//	// As full event handler
+//	// Event handler
 //	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, e *Event) error {
 //	    fmt.Printf("Event on %s: %v", e.Topic(), e.Payload())
 //	    return nil
 //	})
 //
+//	// Typed payload
+//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, id int) error {
+//	    fmt.Printf("Processing ID: %d", id)
+//	    return nil
+//	})
+//
+//	// Generic payload
+//	proxy, err := WrapSubscribeCallback(ctx, func(ctx context.Context, data any) error {
+//	    // Handle any payload type
+//	    return nil
+//	})
+//
 // Notes:
-// - The returned proxy function maintains the original callback's error handling
-// - All parameter type checks are done at wrap time, not during event processing
-// - The context parameter is always required as first argument
+// - The function performs all type validation during wrapping, not during event processing
+// - For maximum performance with known types, use the specific typed signatures
+// - The generic 'any' signature provides flexibility at a small performance cost
 func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx context.Context, e *Event) error, error) {
 	cbVal := reflect.ValueOf(cb)
 	if cbVal.Kind() != reflect.Func {
@@ -60,8 +89,8 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 
 	// Validate input parameters
 	numIn := cbType.NumIn()
-	if numIn < 1 || numIn > 3 {
-		return nil, fmt.Errorf("callback must have 1-3 parameters")
+	if numIn < 1 || numIn > 2 {
+		return nil, fmt.Errorf("callback must have 1-2 parameters")
 	}
 
 	// First parameter must be context.Context
@@ -80,7 +109,10 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 		}
 
 	case numIn == 2:
-		// Check second parameter type
+		// Format:
+		// func(ctx context.Context, e *Event) error
+		// func(ctx context.Context, payload Type) error
+
 		switch paramType := cbType.In(1); paramType {
 		case reflect.TypeOf((*Event)(nil)):
 			cbFunc := cb.(func(ctx context.Context, e *Event) error)
@@ -88,19 +120,7 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 				return cbFunc(ctx, e)
 			}
 
-		case reflect.TypeOf((*Topic)(nil)):
-			return nil, fmt.Errorf("unexpected *Topic as second parameter")
-
-		// optimized for some types
-		case reflect.TypeOf(string("")):
-			cbFunc := cb.(func(ctx context.Context, s string) error)
-			proxy = func(ctx context.Context, e *Event) error {
-				if v, ok := e.Payload().(string); ok {
-					return cbFunc(ctx, v)
-				}
-				return cbFunc(ctx, cast.ToString(e.Payload()))
-			}
-
+		// Numeric types
 		case reflect.TypeOf(int(0)):
 			cbFunc := cb.(func(ctx context.Context, i int) error)
 			proxy = func(ctx context.Context, e *Event) error {
@@ -109,7 +129,108 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 				}
 				return cbFunc(ctx, cast.ToInt(e.Payload()))
 			}
+		case reflect.TypeOf(int8(0)):
+			cbFunc := cb.(func(ctx context.Context, i int8) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(int8); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToInt8(e.Payload()))
+			}
+		case reflect.TypeOf(int16(0)):
+			cbFunc := cb.(func(ctx context.Context, i int16) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(int16); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToInt16(e.Payload()))
+			}
+		case reflect.TypeOf(int32(0)):
+			cbFunc := cb.(func(ctx context.Context, i int32) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(int32); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToInt32(e.Payload()))
+			}
+		case reflect.TypeOf(int64(0)):
+			cbFunc := cb.(func(ctx context.Context, i int64) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(int64); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToInt64(e.Payload()))
+			}
 
+		// Unsigned integers
+		case reflect.TypeOf(uint(0)):
+			cbFunc := cb.(func(ctx context.Context, i uint) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(uint); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToUint(e.Payload()))
+			}
+		case reflect.TypeOf(uint8(0)):
+			cbFunc := cb.(func(ctx context.Context, i uint8) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(uint8); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToUint8(e.Payload()))
+			}
+		case reflect.TypeOf(uint16(0)):
+			cbFunc := cb.(func(ctx context.Context, i uint16) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(uint16); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToUint16(e.Payload()))
+			}
+		case reflect.TypeOf(uint32(0)):
+			cbFunc := cb.(func(ctx context.Context, i uint32) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(uint32); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToUint32(e.Payload()))
+			}
+		case reflect.TypeOf(uint64(0)):
+			cbFunc := cb.(func(ctx context.Context, i uint64) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(uint64); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToUint64(e.Payload()))
+			}
+
+		// Floating point
+		case reflect.TypeOf(float32(0)):
+			cbFunc := cb.(func(ctx context.Context, f float32) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(float32); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToFloat32(e.Payload()))
+			}
+		case reflect.TypeOf(float64(0)):
+			cbFunc := cb.(func(ctx context.Context, f float64) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(float64); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToFloat64(e.Payload()))
+			}
+
+		// String and bool
+		case reflect.TypeOf(string("")):
+			cbFunc := cb.(func(ctx context.Context, s string) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(string); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToString(e.Payload()))
+			}
 		case reflect.TypeOf(bool(false)):
 			cbFunc := cb.(func(ctx context.Context, b bool) error)
 			proxy = func(ctx context.Context, e *Event) error {
@@ -119,36 +240,51 @@ func WrapSubscribeCallback(ctx context.Context, cb interface{}) (func(ctx contex
 				return cbFunc(ctx, cast.ToBool(e.Payload()))
 			}
 
-		default:
-			// common with reflection
+		// Time and duration
+		case reflect.TypeOf(time.Time{}):
+			cbFunc := cb.(func(ctx context.Context, t time.Time) error)
 			proxy = func(ctx context.Context, e *Event) error {
-				out := cbVal.Call([]reflect.Value{
-					reflect.ValueOf(ctx),
-					reflect.ValueOf(e.Payload()),
-				})
-				if err := out[0].Interface(); err != nil {
-					return err.(error)
+				if v, ok := e.Payload().(time.Time); ok {
+					return cbFunc(ctx, v)
 				}
-				return nil
+				return cbFunc(ctx, cast.ToTime(e.Payload()))
 			}
-		}
-
-	case numIn == 3:
-		// Format: func(ctx context.Context, topic *Topic, payload any) error
-		if cbType.In(1) != reflect.TypeOf((*Topic)(nil)) {
-			return nil, fmt.Errorf("second parameter must be *Topic when using three parameters")
-		}
-
-		proxy = func(ctx context.Context, e *Event) error {
-			out := cbVal.Call([]reflect.Value{
-				reflect.ValueOf(ctx),
-				reflect.ValueOf(e.Topic()),
-				reflect.ValueOf(e.Payload()),
-			})
-			if err := out[0].Interface(); err != nil {
-				return err.(error)
+		case reflect.TypeOf(time.Duration(0)):
+			cbFunc := cb.(func(ctx context.Context, d time.Duration) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(time.Duration); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToDuration(e.Payload()))
 			}
-			return nil
+
+		// Slices and maps
+		case reflect.TypeOf([]string{}):
+			cbFunc := cb.(func(ctx context.Context, s []string) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().([]string); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToStringSlice(e.Payload()))
+			}
+		case reflect.TypeOf(map[string]interface{}{}):
+			cbFunc := cb.(func(ctx context.Context, m map[string]interface{}) error)
+			proxy = func(ctx context.Context, e *Event) error {
+				if v, ok := e.Payload().(map[string]interface{}); ok {
+					return cbFunc(ctx, v)
+				}
+				return cbFunc(ctx, cast.ToStringMap(e.Payload()))
+			}
+
+		default:
+			if cbFunc, ok := cb.(func(ctx context.Context, a any) error); ok {
+				proxy = func(ctx context.Context, e *Event) error {
+					return cbFunc(ctx, e.Payload())
+				}
+			} else {
+				// Return error for unsupported types
+				return nil, fmt.Errorf("unsupported parameter type: %v", paramType)
+			}
 		}
 	}
 

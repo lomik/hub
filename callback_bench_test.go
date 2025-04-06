@@ -30,8 +30,8 @@ func BenchmarkWrapSubscribeCallback(b *testing.B) {
 			},
 		},
 		{
-			name: "TopicPayload",
-			fn: func(ctx context.Context, topic *Topic, payload any) error {
+			name: "Payload String",
+			fn: func(ctx context.Context, payload string) error {
 				return nil
 			},
 		},
@@ -74,14 +74,12 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 	noopMinimal := func(ctx context.Context) error { return nil }
 	noopPayload := func(ctx context.Context, payload any) error { return nil }
 	noopPayloadString := func(ctx context.Context, payload string) error { return nil }
-	noopTopicPayload := func(ctx context.Context, topic *Topic, payload any) error { return nil }
 	noopEvent := func(ctx context.Context, e *Event) error { return nil }
 
 	// wrapped
 	minimalProxy, _ := WrapSubscribeCallback(ctx, noopMinimal)
 	payloadProxy, _ := WrapSubscribeCallback(ctx, noopPayload)
 	payloadStringProxy, _ := WrapSubscribeCallback(ctx, noopPayloadString)
-	topicPayloadProxy, _ := WrapSubscribeCallback(ctx, noopTopicPayload)
 	eventProxy, _ := WrapSubscribeCallback(ctx, noopEvent)
 
 	// basic
@@ -124,12 +122,6 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 	b.Run("Wrapped/PayloadString", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_ = payloadStringProxy(ctx, event)
-		}
-	})
-
-	b.Run("Wrapped/TopicPayload", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			_ = topicPayloadProxy(ctx, event)
 		}
 	})
 

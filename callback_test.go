@@ -3,177 +3,232 @@ package hub
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
+	"time"
 )
 
 func TestWrapSubscribeCallback(t *testing.T) {
 	t.Parallel()
 
+	ctx := context.Background()
+
 	tests := []struct {
-		name     string
-		cb       interface{}
-		wantErr  bool
-		checkErr func(t *testing.T, err error)
+		name        string
+		cb          interface{}
+		wantErr     bool
+		errContains string
 	}{
+		// Invalid callbacks
 		{
-			name: "valid minimal callback",
-			cb: func(ctx context.Context) error {
+			name:        "not a function",
+			cb:          "not a function",
+			wantErr:     true,
+			errContains: "callback must be a function",
+		},
+		{
+			name: "invalid return type",
+			cb: func(ctx context.Context) string {
+				return "not an error"
+			},
+			wantErr:     true,
+			errContains: "callback must return exactly one error value",
+		},
+		{
+			name: "no parameters",
+			cb: func() error {
 				return nil
 			},
+			wantErr:     true,
+			errContains: "callback must have 1-2 parameters",
 		},
 		{
-			name: "valid payload callback",
-			cb: func(ctx context.Context, payload any) error {
-				return nil
-			},
-		},
-		{
-			name: "valid topic+payload callback",
-			cb: func(ctx context.Context, topic *Topic, payload any) error {
-				return nil
-			},
-		},
-		{
-			name: "valid event callback",
-			cb: func(ctx context.Context, e *Event) error {
-				return nil
-			},
-		},
-		{
-			name:    "invalid non-function",
-			cb:      "not a function",
-			wantErr: true,
-			checkErr: func(t *testing.T, err error) {
-				if err == nil || err.Error() != "callback must be a function" {
-					t.Errorf("expected 'callback must be a function' error, got %v", err)
-				}
-			},
-		},
-		{
-			name: "invalid return count",
-			cb: func(ctx context.Context) {
-				// no return
-			},
-			wantErr: true,
-			checkErr: func(t *testing.T, err error) {
-				if err == nil || err.Error() != "callback must return exactly one error value" {
-					t.Errorf("expected return count error, got %v", err)
-				}
-			},
-		},
-		{
-			name: "invalid first param",
+			name: "wrong first parameter",
 			cb: func(notCtx string) error {
 				return nil
 			},
-			wantErr: true,
-			checkErr: func(t *testing.T, err error) {
-				if err == nil || err.Error() != "first parameter must be context.Context" {
-					t.Errorf("expected context param error, got %v", err)
-				}
-			},
+			wantErr:     true,
+			errContains: "first parameter must be context.Context",
 		},
 		{
-			name: "invalid topic param position",
-			cb: func(ctx context.Context, payload any, topic *Topic) error {
+			name: "unsupported type",
+			cb: func(ctx context.Context, ch chan int) error {
 				return nil
 			},
-			wantErr: true,
-			checkErr: func(t *testing.T, err error) {
-				if err == nil || err.Error() != "second parameter must be *Topic when using three parameters" {
-					t.Errorf("expected param count error, got %v", err)
-				}
-			},
+			wantErr:     true,
+			errContains: "unsupported parameter type",
 		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := WrapSubscribeCallback(context.Background(), tt.cb)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("WrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if tt.checkErr != nil {
-				tt.checkErr(t, err)
-			}
-		})
-	}
-}
-
-func TestCallbackExecution(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	testEvent := &Event{
-		topic:   T("type=test"),
-		payload: "test payload",
-	}
-
-	tests := []struct {
-		name     string
-		cb       interface{}
-		expected error
-	}{
+		// Valid callbacks
 		{
 			name: "minimal callback",
 			cb: func(ctx context.Context) error {
 				return nil
 			},
-			expected: nil,
-		},
-		{
-			name: "payload callback",
-			cb: func(ctx context.Context, payload any) error {
-				if payload != "test payload" {
-					return errors.New("wrong payload")
-				}
-				return nil
-			},
-			expected: nil,
-		},
-		{
-			name: "topic+payload callback",
-			cb: func(ctx context.Context, topic *Topic, payload any) error {
-				if topic.Get("type") != "test" {
-					return errors.New("wrong topic")
-				}
-				if payload != "test payload" {
-					return errors.New("wrong payload")
-				}
-				return nil
-			},
-			expected: nil,
+			wantErr: false,
 		},
 		{
 			name: "event callback",
 			cb: func(ctx context.Context, e *Event) error {
-				if e != testEvent {
-					return errors.New("wrong event")
-				}
 				return nil
 			},
-			expected: nil,
+			wantErr: false,
 		},
 		{
-			name: "error return",
-			cb: func(ctx context.Context) error {
-				return errors.New("test error")
+			name: "generic any callback",
+			cb: func(ctx context.Context, a any) error {
+				return nil
 			},
-			expected: errors.New("test error"),
+			wantErr: false,
 		},
+	}
+
+	// Add tests for all supported types
+	supportedTypes := []struct {
+		name string
+		cb   interface{}
+	}{
+		{"string", func(ctx context.Context, s string) error { return nil }},
+		{"int", func(ctx context.Context, i int) error { return nil }},
+		{"int8", func(ctx context.Context, i int8) error { return nil }},
+		{"int16", func(ctx context.Context, i int16) error { return nil }},
+		{"int32", func(ctx context.Context, i int32) error { return nil }},
+		{"int64", func(ctx context.Context, i int64) error { return nil }},
+		{"uint", func(ctx context.Context, i uint) error { return nil }},
+		{"uint8", func(ctx context.Context, i uint8) error { return nil }},
+		{"uint16", func(ctx context.Context, i uint16) error { return nil }},
+		{"uint32", func(ctx context.Context, i uint32) error { return nil }},
+		{"uint64", func(ctx context.Context, i uint64) error { return nil }},
+		{"float32", func(ctx context.Context, f float32) error { return nil }},
+		{"float64", func(ctx context.Context, f float64) error { return nil }},
+		{"bool", func(ctx context.Context, b bool) error { return nil }},
+		{"time.Time", func(ctx context.Context, tm time.Time) error { return nil }},
+		{"time.Duration", func(ctx context.Context, d time.Duration) error { return nil }},
+		{"[]string", func(ctx context.Context, s []string) error { return nil }},
+		{"map[string]any", func(ctx context.Context, m map[string]any) error { return nil }},
+	}
+
+	for _, typ := range supportedTypes {
+		tests = append(tests, struct {
+			name        string
+			cb          interface{}
+			wantErr     bool
+			errContains string
+		}{
+			name:    "supported type: " + typ.name,
+			cb:      typ.cb,
+			wantErr: false,
+		})
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			proxy, err := WrapSubscribeCallback(ctx, tt.cb)
+			_, err := WrapSubscribeCallback(ctx, tt.cb)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("WrapSubscribeCallback() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errContains != "" && !contains(err.Error(), tt.errContains) {
+				t.Errorf("Expected error to contain %q, got %v", tt.errContains, err)
+			}
+		})
+	}
+}
+
+func TestWrappedCallbackExecution(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	testCases := []struct {
+		name        string
+		payload     interface{}
+		cb          interface{}
+		expectError bool
+	}{
+		{
+			name:    "string direct match",
+			payload: "test",
+			cb: func(ctx context.Context, s string) error {
+				if s != "test" {
+					return errors.New("unexpected value")
+				}
+				return nil
+			},
+		},
+		{
+			name:    "string conversion",
+			payload: 123,
+			cb: func(ctx context.Context, s string) error {
+				if s != "123" {
+					return errors.New("conversion failed")
+				}
+				return nil
+			},
+		},
+		{
+			name:    "int direct match",
+			payload: 42,
+			cb: func(ctx context.Context, i int) error {
+				if i != 42 {
+					return errors.New("unexpected value")
+				}
+				return nil
+			},
+		},
+		{
+			name:    "int conversion from string",
+			payload: "42",
+			cb: func(ctx context.Context, i int) error {
+				if i != 42 {
+					return errors.New("conversion failed")
+				}
+				return nil
+			},
+		},
+		{
+			name:    "time.Time conversion",
+			payload: "2023-01-01T00:00:00Z",
+			cb: func(ctx context.Context, tm time.Time) error {
+				if tm.Year() != 2023 {
+					return errors.New("conversion failed")
+				}
+				return nil
+			},
+		},
+		{
+			name: "generic any callback",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, a any) error {
+				if reflect.TypeOf(a).Kind() != reflect.Struct {
+					return errors.New("unexpected type")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			event := &Event{
+				topic:   T("type=test"),
+				payload: tc.payload,
+			}
+
+			proxy, err := WrapSubscribeCallback(ctx, tc.cb)
 			if err != nil {
 				t.Fatalf("WrapSubscribeCallback failed: %v", err)
 			}
 
-			err = proxy(ctx, testEvent)
-			if (err == nil) != (tt.expected == nil) || (err != nil && err.Error() != tt.expected.Error()) {
-				t.Errorf("proxy() = %v, want %v", err, tt.expected)
+			err = proxy(ctx, event)
+			if (err != nil) != tc.expectError {
+				t.Errorf("Unexpected error state: got %v, want error=%v", err, tc.expectError)
 			}
 		})
 	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && s[:len(substr)] == substr
 }

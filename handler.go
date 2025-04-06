@@ -8,6 +8,20 @@ import (
 	"github.com/spf13/cast"
 )
 
+// Handler defines a function signature for processing events in the hub.
+// It receives a context for cancellation/timeout and the event to process.
+// Return an error to indicate processing failure.
+//
+// Usage:
+//
+//	var myHandler Handler = func(ctx context.Context, e *Event) error {
+//	    log.Printf("Processing event: %s", e.Topic())
+//	    return nil // Return nil on success
+//	}
+//
+//	h.SubscribeEvent(ctx, topic, myHandler)
+type Handler func(ctx context.Context, e *Event) error
+
 func toHandlerCommon[T any](cb func(context.Context, T) error, castFunc func(any) T) Handler {
 	return func(ctx context.Context, e *Event) error {
 		if v, ok := e.Payload().(T); ok {
@@ -18,7 +32,18 @@ func toHandlerCommon[T any](cb func(context.Context, T) error, castFunc func(any
 }
 
 // ToHandler converts various callback signatures into a standardized Event handler function.
-func (h *Hub) ToHandler(_ context.Context, cb any) (Handler, error) {
+func (h *Hub) ToHandler(ctx context.Context, cb any) (Handler, error) {
+	// custom converters
+	for _, c := range h.convertToHandler {
+		ret, err := c(ctx, cb)
+		if err != nil {
+			return nil, err
+		}
+		if ret != nil {
+			return ret, nil
+		}
+	}
+
 	switch cbt := cb.(type) {
 	case func(ctx context.Context) error:
 		return func(ctx context.Context, e *Event) error {

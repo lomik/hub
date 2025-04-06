@@ -6,20 +6,6 @@ import (
 	"sync/atomic"
 )
 
-// Handler defines a function signature for processing events in the hub.
-// It receives a context for cancellation/timeout and the event to process.
-// Return an error to indicate processing failure.
-//
-// Usage:
-//
-//	var myHandler Handler = func(ctx context.Context, e *Event) error {
-//	    log.Printf("Processing event: %s", e.Topic())
-//	    return nil // Return nil on success
-//	}
-//
-//	h.SubscribeEvent(ctx, topic, myHandler)
-type Handler func(ctx context.Context, e *Event) error
-
 // Hub implements a pub/sub system with optimized subscription matching
 // using multi-level indexes for efficient event distribution
 type Hub struct {
@@ -33,17 +19,23 @@ type Hub struct {
 	indexEmpty    *sublist                       // Subscriptions without topic attributes
 
 	// customize
-	onCallback [](func(cb any) (Handler, error))
+	convertToHandler [](func(ctx context.Context, cb any) (Handler, error))
 }
 
 // New creates and initializes a new Hub instance
-func New() *Hub {
-	return &Hub{
+func New(opts ...HubOption) *Hub {
+	h := &Hub{
 		all:           &sublist{},
 		indexKeyValue: make(map[string]map[string]*sublist),
 		indexKey:      make(map[string]*sublist),
 		indexEmpty:    &sublist{},
 	}
+
+	for _, o := range opts {
+		o.modifyHub(h)
+	}
+
+	return h
 }
 
 // SubscribeEvent registers a new event subscriber with topic matching

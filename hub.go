@@ -198,6 +198,16 @@ func (h *Hub) Publish(ctx context.Context, topic *Topic, payload any, opts ...Pu
 
 // PublishEvent delivers an event to all matching subscribers
 func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption) {
+	// clean once subscriptions after unlock if publish with sync=true
+	syncUnsubscribeList := make([]SubID, 0)
+	if e.sync {
+		defer func() {
+			for _, sid := range syncUnsubscribeList {
+				h.Unsubscribe(ctx, sid)
+			}
+		}()
+	}
+
 	h.RLock()
 	defer h.RUnlock()
 
@@ -241,6 +251,10 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 		for s := range mergeSubLists(candidates...) {
 			if s.topic.Match(e.Topic()) {
 				_ = s.call(ctx, e)
+				// handle once
+				if s.shouldRemove() {
+					syncUnsubscribeList = append(syncUnsubscribeList, s.id)
+				}
 			}
 		}
 		e.finish(ctx)
@@ -255,6 +269,10 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 			if s.topic.Match(e.Topic()) {
 				go func(s *sub) {
 					_ = s.call(ctx, e)
+					// handle once
+					if s.shouldRemove() {
+						h.Unsubscribe(ctx, s.id)
+					}
 				}(s)
 			}
 		}
@@ -270,7 +288,13 @@ func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption)
 		if s.topic.Match(e.Topic()) {
 			wg.Add(1)
 			go func(s *sub) {
-				defer wg.Done()
+				defer func() {
+					wg.Done()
+					// handle once
+					if s.shouldRemove() {
+						h.Unsubscribe(ctx, s.id)
+					}
+				}()
 				_ = s.call(ctx, e)
 			}(s)
 		}

@@ -8,20 +8,20 @@ import (
 type SubID uint64
 
 type sub struct {
-	counter       atomic.Uint64
-	id            SubID
-	topic         *Topic
-	callbackEvent func(ctx context.Context, e *Event) error
-	once          bool
+	counter atomic.Uint64
+	id      SubID
+	topic   *Topic
+	handler Handler
+	once    bool
 }
 
-func (s *sub) call(ctx context.Context, e *Event) error {
+func (s *sub) call(ctx context.Context, e *event) error {
 	c := s.counter.Add(1)
 	if s.once && c > 1 {
 		return nil
 	}
-	if s.callbackEvent != nil {
-		return s.callbackEvent(ctx, e)
+	if s.handler != nil {
+		return s.handler(ctx, e.topic, e.payload)
 	}
 	return nil
 }

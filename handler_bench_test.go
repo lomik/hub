@@ -10,7 +10,7 @@ func BenchmarkToHandler(b *testing.B) {
 	ctx := context.Background()
 	h := New()
 
-	testEvent := &Event{
+	testEvent := &event{
 		topic:   T("type=benchmark"),
 		payload: "benchmark payload",
 	}
@@ -39,7 +39,7 @@ func BenchmarkToHandler(b *testing.B) {
 		},
 		{
 			name: "Event",
-			fn: func(ctx context.Context, e *Event) error {
+			fn: func(ctx context.Context, topic *Topic, p any) error {
 				return nil
 			},
 		},
@@ -59,7 +59,7 @@ func BenchmarkToHandler(b *testing.B) {
 
 		b.Run("Exec_"+cb.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = proxy(ctx, testEvent)
+				_ = proxy(ctx, testEvent.topic, testEvent.payload)
 			}
 		})
 	}
@@ -68,7 +68,7 @@ func BenchmarkToHandler(b *testing.B) {
 func BenchmarkWrappedCallbacks(b *testing.B) {
 	ctx := context.Background()
 	h := New()
-	event := &Event{
+	event := &event{
 		topic:   T("type=test", "priority=high"),
 		payload: "test payload",
 	}
@@ -77,7 +77,7 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 	noopMinimal := func(ctx context.Context) error { return nil }
 	noopPayload := func(ctx context.Context, payload any) error { return nil }
 	noopPayloadString := func(ctx context.Context, payload string) error { return nil }
-	noopEvent := func(ctx context.Context, e *Event) error { return nil }
+	noopEvent := func(ctx context.Context, topic *Topic, p any) error { return nil }
 
 	// wrapped
 	minimalProxy, _ := h.ToHandler(ctx, noopMinimal)
@@ -94,25 +94,25 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 
 	b.Run("Wrapped/Minimal", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = minimalProxy(ctx, event)
+			_ = minimalProxy(ctx, event.topic, event.payload)
 		}
 	})
 
 	b.Run("Direct/Event", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = noopEvent(ctx, event)
+			_ = noopEvent(ctx, event.topic, event.payload)
 		}
 	})
 
 	b.Run("Wrapped/Event", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = eventProxy(ctx, event)
+			_ = eventProxy(ctx, event.topic, event.payload)
 		}
 	})
 
 	b.Run("Wrapped/Payload", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = payloadProxy(ctx, event)
+			_ = payloadProxy(ctx, event.topic, event.payload)
 		}
 	})
 
@@ -124,7 +124,7 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 
 	b.Run("Wrapped/PayloadString", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = payloadStringProxy(ctx, event)
+			_ = payloadStringProxy(ctx, event.topic, event.payload)
 		}
 	})
 
@@ -144,7 +144,7 @@ func BenchmarkWrappedCallbacks(b *testing.B) {
 
 	b.Run("Wrapped/RealPayload", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = processPayloadProxy(ctx, event)
+			_ = processPayloadProxy(ctx, event.topic, event.payload)
 		}
 	})
 }

@@ -70,7 +70,7 @@ func TestToHandler(t *testing.T) {
 		},
 		{
 			name: "event callback",
-			cb: func(ctx context.Context, e *Event) error {
+			cb: func(ctx context.Context, t *Topic, p any) error {
 				return nil
 			},
 			wantErr: false,
@@ -214,7 +214,7 @@ func TestWrappedCallbackExecution(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			event := &Event{
+			event := &event{
 				topic:   T("type=test"),
 				payload: tc.payload,
 			}
@@ -224,7 +224,7 @@ func TestWrappedCallbackExecution(t *testing.T) {
 				t.Fatalf("ToHandler failed: %v", err)
 			}
 
-			err = proxy(ctx, event)
+			err = proxy(ctx, event.topic, event.payload)
 			if (err != nil) != tc.expectError {
 				t.Errorf("Unexpected error state: got %v, want error=%v", err, tc.expectError)
 			}

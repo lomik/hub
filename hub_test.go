@@ -21,15 +21,15 @@ func TestHubSubscribe(t *testing.T) {
 	h := New()
 	ctx := context.Background()
 
-	t.Run("SubscribeEvent", func(t *testing.T) {
-		id := h.SubscribeEvent(ctx, T("type=test"), func(ctx context.Context, e *Event) error {
+	t.Run("Subscribe", func(t *testing.T) {
+		id, _ := h.Subscribe(ctx, T("type=test"), func(ctx context.Context, topic *Topic, p any) error {
 			return nil
 		})
 		if id == 0 {
 			t.Error("Expected non-zero subscription ID")
 		}
 		if h.Len() != 1 {
-			t.Error("Expected 1 subscription after SubscribeEvent")
+			t.Error("Expected 1 subscription after Subscribe")
 		}
 	})
 }
@@ -42,15 +42,15 @@ func TestHubPublish(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		h.SubscribeEvent(ctx, T("type=test"), func(ctx context.Context, e *Event) error {
+		h.Subscribe(ctx, T("type=test"), func(ctx context.Context, topic *Topic, p any) error {
 			defer wg.Done()
-			if e.Topic().String() != "type=test" {
+			if topic.String() != "type=test" {
 				t.Error("Unexpected topic in event")
 			}
 			return nil
 		})
 
-		h.PublishEvent(ctx, E("type=test"))
+		h.Publish(ctx, T("type=test"), nil)
 		wg.Wait()
 	})
 
@@ -58,23 +58,23 @@ func TestHubPublish(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(1)
 
-		h.SubscribeEvent(ctx, T("type=*"), func(ctx context.Context, e *Event) error {
+		h.Subscribe(ctx, T("type=*"), func(ctx context.Context, topic *Topic, p any) error {
 			defer wg.Done()
 			return nil
 		})
 
-		h.PublishEvent(ctx, E("type=wildcard"))
+		h.Publish(ctx, T("type=wildcard"), nil)
 		wg.Wait()
 	})
 
 	t.Run("wait mode", func(t *testing.T) {
 		start := time.Now()
-		h.SubscribeEvent(ctx, T("wait=test"), func(ctx context.Context, e *Event) error {
+		h.Subscribe(ctx, T("wait=test"), func(ctx context.Context, topic *Topic, p any) error {
 			time.Sleep(100 * time.Millisecond)
 			return nil
 		})
 
-		h.PublishEvent(ctx, E("wait=test").WithWait(true))
+		h.Publish(ctx, T("wait=test"), nil, Wait(true))
 		if time.Since(start) < 100*time.Millisecond {
 			t.Error("Wait mode didn't wait for handlers")
 		}
@@ -86,7 +86,7 @@ func TestHubUnsubscribe(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("unsubscribe existing", func(t *testing.T) {
-		id := h.SubscribeEvent(ctx, T("type=test"), nil)
+		id, _ := h.Subscribe(ctx, T("type=test"), nil)
 		h.Unsubscribe(ctx, id)
 		if h.Len() != 0 {
 			t.Error("Expected 0 subscriptions after unsubscribe")
@@ -98,7 +98,7 @@ func TestHubUnsubscribe(t *testing.T) {
 	})
 
 	t.Run("unsubscribe from indexes", func(t *testing.T) {
-		id := h.SubscribeEvent(ctx, T("type=alert"), nil)
+		id, _ := h.Subscribe(ctx, T("type=alert"), nil)
 		h.Unsubscribe(ctx, id)
 
 		h.RLock()
@@ -116,8 +116,8 @@ func TestHubClear(t *testing.T) {
 	h := New()
 	ctx := context.Background()
 
-	h.SubscribeEvent(ctx, T("type=a"), nil)
-	h.SubscribeEvent(ctx, T("type=b"), nil)
+	h.Subscribe(ctx, T("type=a"), nil)
+	h.Subscribe(ctx, T("type=b"), nil)
 	h.Clear(ctx)
 
 	if h.Len() != 0 {
@@ -144,7 +144,7 @@ func TestHubConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			h.SubscribeEvent(ctx, T("concurrent=test"), nil)
+			h.Subscribe(ctx, T("concurrent=test"), nil)
 		}()
 	}
 
@@ -153,7 +153,7 @@ func TestHubConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			h.PublishEvent(ctx, E("concurrent=test"))
+			h.Publish(ctx, T("concurrent=test"), nil)
 		}()
 	}
 
@@ -174,7 +174,7 @@ func TestHubIndexes(t *testing.T) {
 	ctx := context.Background()
 
 	// Test key-value index
-	h.SubscribeEvent(ctx, T("type=alert"), nil)
+	h.Subscribe(ctx, T("type=alert"), Handler(nil))
 	h.RLock()
 	if h.indexKeyValue["type"]["alert"].len() != 1 {
 		t.Error("Subscription not added to key-value index")
@@ -182,7 +182,7 @@ func TestHubIndexes(t *testing.T) {
 	h.RUnlock()
 
 	// Test wildcard index
-	h.SubscribeEvent(ctx, T("type=*"), nil)
+	h.Subscribe(ctx, T("type=*"), Handler(nil))
 	h.RLock()
 	if h.indexKey["type"].len() != 2 {
 		t.Error("Subscription not added to key index")
@@ -190,7 +190,7 @@ func TestHubIndexes(t *testing.T) {
 	h.RUnlock()
 
 	// Test empty topic
-	h.SubscribeEvent(ctx, T(""), nil)
+	h.Subscribe(ctx, T(""), Handler(nil))
 	h.RLock()
 	if h.indexEmpty.len() != 1 {
 		t.Error("Subscription not added to empty index")
@@ -206,7 +206,7 @@ func TestHubLen(t *testing.T) {
 		t.Error("New hub should have length 0")
 	}
 
-	h.SubscribeEvent(ctx, T("type=test"), nil)
+	h.Subscribe(ctx, T("type=test"), Handler(nil))
 	if h.Len() != 1 {
 		t.Error("Expected length 1 after subscribe")
 	}

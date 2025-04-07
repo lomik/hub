@@ -38,36 +38,11 @@ func New(opts ...HubOption) *Hub {
 	return h
 }
 
-// SubscribeEvent registers a new event subscriber with topic matching
-func (h *Hub) SubscribeEvent(ctx context.Context, t *Topic, cb Handler, opts ...SubscribeOption) SubID {
-	h.Lock()
-	defer h.Unlock()
-
-	id := SubID(h.seq.Add(1))
-	s := &sub{
-		id:            id,
-		topic:         t,
-		callbackEvent: cb,
-	}
-
-	for _, o := range opts {
-		if o == nil {
-			continue
-		}
-		o.modifySub(ctx, s)
-	}
-
-	h.add(ctx, s)
-	return id
-}
-
 // Subscribe registers an event handler with flexible callback signature options.
-// It provides a more convenient interface than SubscribeEvent by automatically
-// wrapping different callback signatures while maintaining type safety.
 //
 // Supported callback formats:
 //  1. Minimal:      func(ctx context.Context) error
-//  2. Event style:  func(ctx context.Context, e *Event) error
+//  2. Flexible:  func(ctx context.Context, topic *Topic, payload any) error
 //  3. Typed payload: func(ctx context.Context, payload Type) error
 //  4. Generic payload: func(ctx context.Context, payload any) error
 //
@@ -128,7 +103,25 @@ func (h *Hub) Subscribe(ctx context.Context, t *Topic, cb interface{}, opts ...S
 		return 0, err
 	}
 
-	return h.SubscribeEvent(ctx, t, eventCb, opts...), nil
+	h.Lock()
+	defer h.Unlock()
+
+	id := SubID(h.seq.Add(1))
+	s := &sub{
+		id:      id,
+		topic:   t,
+		handler: eventCb,
+	}
+
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		o.modifySub(ctx, s)
+	}
+
+	h.add(ctx, s)
+	return id, nil
 }
 
 // add adds a subscription to all relevant indexes
@@ -160,8 +153,6 @@ func (h *Hub) add(_ context.Context, s *sub) {
 }
 
 // Publish sends an event to all subscribers of the specified topic with the given payload.
-// It provides a simplified interface compared to PublishEvent by automatically creating
-// the Event structure for common use cases.
 //
 // Parameters:
 //   - ctx:       Context for cancellation and timeouts
@@ -197,12 +188,38 @@ func (h *Hub) add(_ context.Context, s *sub) {
 //	)
 //
 // Notes:
-// - For advanced event configuration, use PublishEvent directly
 // - The payload will be automatically converted when subscribers use typed callbacks
 // - Topic is required (use hub.T() to create topics)
 // - Safe for concurrent use
 func (h *Hub) Publish(ctx context.Context, topic *Topic, payload any, opts ...PublishOption) {
-	h.PublishEvent(ctx, E().WithTopic(topic).WithPayload(payload), opts...)
+	e := &event{
+		topic:   topic,
+		payload: payload,
+	}
+
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		o.modifyEvent(ctx, e)
+	}
+
+	if e.sync {
+		h.publishEventSync(ctx, e)
+		return
+	}
+
+	if e.wait {
+		h.publishEventAsyncWait(ctx, e)
+		return
+	}
+
+	if e.hasOnFinish() {
+		h.publishEventAsyncNoWaitFinish(ctx, e)
+		return
+	}
+
+	h.publishEventAsyncNoWaitNoFinish(ctx, e)
 }
 
 // match finds subscriptions that match the event.
@@ -249,11 +266,11 @@ func (h *Hub) match(t *Topic, cb func(s *sub)) int {
 }
 
 // sync = true
-func (h *Hub) publishEventSync(ctx context.Context, e *Event) {
+func (h *Hub) publishEventSync(ctx context.Context, e *event) {
 	var unsub []SubID
 
 	h.RLock()
-	h.match(e.Topic(), func(s *sub) {
+	h.match(e.topic, func(s *sub) {
 		_ = s.call(ctx, e)
 		// handle limited subscription
 		if s.shouldRemove() {
@@ -272,11 +289,11 @@ func (h *Hub) publishEventSync(ctx context.Context, e *Event) {
 }
 
 // sync = false, wait = true
-func (h *Hub) publishEventAsyncWait(ctx context.Context, e *Event) {
+func (h *Hub) publishEventAsyncWait(ctx context.Context, e *event) {
 	var wg sync.WaitGroup
 
 	h.RLock()
-	h.match(e.Topic(), func(s *sub) {
+	h.match(e.topic, func(s *sub) {
 		wg.Add(1)
 		go func(s *sub) {
 			_ = s.call(ctx, e)
@@ -295,12 +312,12 @@ func (h *Hub) publishEventAsyncWait(ctx context.Context, e *Event) {
 }
 
 // sync = false, wait = false, hasOnFinish = true
-func (h *Hub) publishEventAsyncNoWaitFinish(ctx context.Context, e *Event) {
+func (h *Hub) publishEventAsyncNoWaitFinish(ctx context.Context, e *event) {
 	var wg sync.WaitGroup
 	var once sync.Once
 
 	h.RLock()
-	n := h.match(e.Topic(), func(s *sub) {
+	n := h.match(e.topic, func(s *sub) {
 		go func(s *sub) {
 			_ = s.call(ctx, e)
 			wg.Done()
@@ -325,10 +342,10 @@ func (h *Hub) publishEventAsyncNoWaitFinish(ctx context.Context, e *Event) {
 }
 
 // sync = false, wait = false, hasOnFinish = false
-func (h *Hub) publishEventAsyncNoWaitNoFinish(ctx context.Context, e *Event) {
+func (h *Hub) publishEventAsyncNoWaitNoFinish(ctx context.Context, e *event) {
 	// run all async and don't wait anything
 	h.RLock()
-	h.match(e.Topic(), func(s *sub) {
+	h.match(e.topic, func(s *sub) {
 		go func(s *sub) {
 			_ = s.call(ctx, e)
 			// handle limited subscription
@@ -339,33 +356,6 @@ func (h *Hub) publishEventAsyncNoWaitNoFinish(ctx context.Context, e *Event) {
 		}(s)
 	})
 	h.RUnlock()
-}
-
-// PublishEvent delivers an event to all matching subscribers
-func (h *Hub) PublishEvent(ctx context.Context, e *Event, opts ...PublishOption) {
-	for _, o := range opts {
-		if o == nil {
-			continue
-		}
-		e = o.modifyEvent(ctx, e)
-	}
-
-	if e.sync {
-		h.publishEventSync(ctx, e)
-		return
-	}
-
-	if e.wait {
-		h.publishEventAsyncWait(ctx, e)
-		return
-	}
-
-	if e.hasOnFinish() {
-		h.publishEventAsyncNoWaitFinish(ctx, e)
-		return
-	}
-
-	h.publishEventAsyncNoWaitNoFinish(ctx, e)
 }
 
 // Unsubscribe removes a subscription by ID

@@ -9,7 +9,7 @@ type SubscribeOption interface {
 
 // PublishOption defines an interface for modifying event publishing behavior
 type PublishOption interface {
-	modifyEvent(ctx context.Context, e *Event) *Event
+	modifyEvent(ctx context.Context, e *event)
 }
 
 // optionSubscribeOnce implements subscription option for single-time delivery
@@ -36,8 +36,8 @@ type optionPublishSync struct {
 }
 
 // modifyEvent applies synchronous processing flag to the event
-func (o *optionPublishSync) modifyEvent(ctx context.Context, e *Event) *Event {
-	return e.WithSync(o.v)
+func (o *optionPublishSync) modifyEvent(ctx context.Context, e *event) {
+	e.sync = o.v
 }
 
 // Sync creates a PublishOption that controls synchronous event processing.
@@ -56,12 +56,12 @@ type optionPublishWait struct {
 }
 
 // modifyEvent applies wait flag to the event
-func (o *optionPublishWait) modifyEvent(ctx context.Context, e *Event) *Event {
-	return e.WithWait(o.v)
+func (o *optionPublishWait) modifyEvent(ctx context.Context, e *event) {
+	e.wait = o.v
 }
 
 // Wait creates a PublishOption that controls waiting for handlers
-// When true, PublishEvent will block until all handlers complete
+// When true, Publish will block until all handlers complete
 func Wait(v bool) PublishOption {
 	return &optionPublishWait{
 		v: v,
@@ -70,20 +70,20 @@ func Wait(v bool) PublishOption {
 
 // optionPublishOnFinish implements callback after publish completion
 type optionPublishOnFinish struct {
-	cb func(ctx context.Context, ev *Event) // Callback function
+	cb func(ctx context.Context) // Callback function
 }
 
 // modifyEvent adds completion callback to the event
-func (o *optionPublishOnFinish) modifyEvent(ctx context.Context, e *Event) *Event {
+func (o *optionPublishOnFinish) modifyEvent(ctx context.Context, e *event) {
 	if o.cb == nil {
-		return e
+		return
 	}
-	return e.WithOnFinish(o.cb)
+	e.onFinish = append(e.onFinish, o.cb)
 }
 
 // OnFinish creates a PublishOption with completion callback
 // The callback executes after all handlers process the event
-func OnFinish(cb func(ctx context.Context, ev *Event)) PublishOption {
+func OnFinish(cb func(ctx context.Context)) PublishOption {
 	return &optionPublishOnFinish{
 		cb: cb,
 	}

@@ -102,26 +102,6 @@ h.Publish(ctx,
 h.Unsubscribe(ctx, id)
 ```
 
-## Advanced Usage
-For more control, use the `SubscribeEvent` and `PublishEvent` methods:
-```go
-// Create event with options
-event := hub.E("type=alert", "urgent=true").
-    WithPayload("System failure").
-    WithOnFinish(func(ctx context.Context, e *hub.Event) {
-        log.Println("Event processed")
-    })
-
-// Subscribe with exact event matching
-h.SubscribeEvent(ctx, hub.T("type=alert"), func(ctx context.Context, e *hub.Event) error {
-    log.Printf("Alert: %s", e.Payload())
-    return nil
-})
-
-// Publish with ful options
-h.PublishEvent(ctx, event, hub.Wait(true))
-```
-
 ### Patterns
 
 #### Topic Matching
@@ -133,10 +113,10 @@ subscriberTopic := hub.T("type=alert", "priority=*")
 eventTopic := hub.T("type=alert", "priority=high")
 
 // This will match
-h.PublishEvent(ctx, &hub.Event{
-    topic:   eventTopic,
-    payload: "System overload",
+h.Subscribe(ctx, subscriberTopic, func(ctx context.Context, p string) error {
+    fmt.Println(p)
 })
+h.Publish(ctx, eventTopic, "System overload")
 ```
 
 #### Merging Topics
@@ -144,8 +124,5 @@ h.PublishEvent(ctx, &hub.Event{
 base := hub.T("app=web", "env=production")
 extended := base.With("user=admin", "action=delete")
 
-h.PublishEvent(ctx, &hub.Event{
-    topic:   extended,
-    payload: "User deleted item",
-})
+h.Publish(ctx, extended, "User deleted item")
 ```

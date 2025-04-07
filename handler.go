@@ -19,15 +19,15 @@ import (
 //	    return nil // Return nil on success
 //	}
 //
-//	h.SubscribeEvent(ctx, topic, myHandler)
-type Handler func(ctx context.Context, e *Event) error
+//	h.Subscribe(ctx, topic, myHandler)
+type Handler func(ctx context.Context, t *Topic, p any) error
 
 func toHandlerCommon[T any](cb func(context.Context, T) error, castFunc func(any) T) Handler {
-	return func(ctx context.Context, e *Event) error {
-		if v, ok := e.Payload().(T); ok {
+	return func(ctx context.Context, t *Topic, p any) error {
+		if v, ok := p.(T); ok {
 			return cb(ctx, v)
 		}
-		return cb(ctx, castFunc(e.Payload()))
+		return cb(ctx, castFunc(p))
 	}
 }
 
@@ -46,13 +46,13 @@ func (h *Hub) ToHandler(ctx context.Context, cb any) (Handler, error) {
 
 	switch cbt := cb.(type) {
 	case func(ctx context.Context) error:
-		return func(ctx context.Context, e *Event) error {
+		return func(ctx context.Context, t *Topic, p any) error {
 			return cbt(ctx)
 		}, nil
 
 	case Handler:
 		return cbt, nil
-	case func(context.Context, *Event) error:
+	case func(context.Context, *Topic, any) error:
 		return cbt, nil
 
 	// Numeric types
@@ -103,8 +103,8 @@ func (h *Hub) ToHandler(ctx context.Context, cb any) (Handler, error) {
 	case func(context.Context, map[string]any) error:
 		return toHandlerCommon(cbt, cast.ToStringMap), nil
 	case func(ctx context.Context, a any) error:
-		return func(ctx context.Context, e *Event) error {
-			return cbt(ctx, e.Payload())
+		return func(ctx context.Context, t *Topic, p any) error {
+			return cbt(ctx, p)
 		}, nil
 
 	// default

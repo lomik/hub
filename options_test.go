@@ -28,18 +28,18 @@ func TestOnce(t *testing.T) {
 func TestSync(t *testing.T) {
 	t.Run("enables sync mode", func(t *testing.T) {
 		opt := Sync(true)
-		e := &Event{}
-		modified := opt.modifyEvent(context.Background(), e)
-		if !modified.sync {
+		e := &event{}
+		opt.modifyEvent(context.Background(), e)
+		if !e.sync {
 			t.Error("Sync(true) didn't enable sync mode")
 		}
 	})
 
 	t.Run("disables sync mode", func(t *testing.T) {
 		opt := Sync(false)
-		e := &Event{sync: true}
-		modified := opt.modifyEvent(context.Background(), e)
-		if modified.sync {
+		e := &event{sync: true}
+		opt.modifyEvent(context.Background(), e)
+		if e.sync {
 			t.Error("Sync(false) didn't disable sync mode")
 		}
 	})
@@ -48,18 +48,18 @@ func TestSync(t *testing.T) {
 func TestWait(t *testing.T) {
 	t.Run("enables wait mode", func(t *testing.T) {
 		opt := Wait(true)
-		e := &Event{}
-		modified := opt.modifyEvent(context.Background(), e)
-		if !modified.wait {
+		e := &event{}
+		opt.modifyEvent(context.Background(), e)
+		if !e.wait {
 			t.Error("Wait(true) didn't enable wait mode")
 		}
 	})
 
 	t.Run("disables wait mode", func(t *testing.T) {
 		opt := Wait(false)
-		e := &Event{wait: true}
-		modified := opt.modifyEvent(context.Background(), e)
-		if modified.wait {
+		e := &event{wait: true}
+		opt.modifyEvent(context.Background(), e)
+		if e.wait {
 			t.Error("Wait(false) didn't disable wait mode")
 		}
 	})
@@ -68,21 +68,21 @@ func TestWait(t *testing.T) {
 func TestOnFinish(t *testing.T) {
 	t.Run("sets callback function", func(t *testing.T) {
 		called := false
-		cb := func(ctx context.Context, ev *Event) {
+		cb := func(ctx context.Context) {
 			called = true
 		}
 
 		opt := OnFinish(cb)
-		e := &Event{}
-		modified := opt.modifyEvent(context.Background(), e)
+		e := &event{}
+		opt.modifyEvent(context.Background(), e)
 
 		// Verify callback was set
-		if len(modified.onFinish) != 1 {
+		if len(e.onFinish) != 1 {
 			t.Fatal("Callback not set")
 		}
 
 		// Test callback execution
-		modified.onFinish[0](context.Background(), modified)
+		e.onFinish[0](context.Background())
 		if !called {
 			t.Error("Callback function not executed properly")
 		}
@@ -90,9 +90,9 @@ func TestOnFinish(t *testing.T) {
 
 	t.Run("nil callback", func(t *testing.T) {
 		opt := OnFinish(nil)
-		e := &Event{}
-		modified := opt.modifyEvent(context.Background(), e)
-		if len(modified.onFinish) != 0 {
+		e := &event{}
+		opt.modifyEvent(context.Background(), e)
+		if len(e.onFinish) != 0 {
 			t.Error("Nil callback should not be added")
 		}
 	})
@@ -100,37 +100,19 @@ func TestOnFinish(t *testing.T) {
 
 func TestOptionChaining(t *testing.T) {
 	t.Run("multiple publish options", func(t *testing.T) {
-		e := &Event{}
+		e := &event{}
 		opts := []PublishOption{
 			Sync(true),
 			Wait(true),
-			OnFinish(func(ctx context.Context, ev *Event) {}),
+			OnFinish(func(ctx context.Context) {}),
 		}
 
 		for _, opt := range opts {
-			e = opt.modifyEvent(context.Background(), e)
+			opt.modifyEvent(context.Background(), e)
 		}
 
 		if !e.sync || !e.wait || len(e.onFinish) != 1 {
 			t.Error("Failed to apply multiple options correctly")
-		}
-	})
-}
-
-func TestOptionImmutable(t *testing.T) {
-	t.Run("original event not modified", func(t *testing.T) {
-		original := &Event{}
-		opt := Sync(true)
-		modified := opt.modifyEvent(context.Background(), original)
-
-		if original.sync {
-			t.Error("Original event was modified")
-		}
-		if !modified.sync {
-			t.Error("Modified event not updated")
-		}
-		if original == modified {
-			t.Error("Should return new Event instance")
 		}
 	})
 }

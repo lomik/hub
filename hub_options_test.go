@@ -14,8 +14,8 @@ func TestCustomHandlerConversion(t *testing.T) {
 	// Test converter that handles func(string) error
 	stringConverter := func(ctx context.Context, cb any) (Handler, error) {
 		if fn, ok := cb.(func(string) error); ok {
-			return func(ctx context.Context, e *Event) error {
-				s, err := cast.ToStringE(e.Payload())
+			return func(ctx context.Context, t *Topic, p any) error {
+				s, err := cast.ToStringE(p)
 				if err != nil {
 					return err
 				}
@@ -28,8 +28,8 @@ func TestCustomHandlerConversion(t *testing.T) {
 	// Test converter that handles func(int) error
 	intConverter := func(ctx context.Context, cb any) (Handler, error) {
 		if fn, ok := cb.(func(int) error); ok {
-			return func(ctx context.Context, e *Event) error {
-				i, err := cast.ToIntE(e.Payload())
+			return func(ctx context.Context, t *Topic, p any) error {
+				i, err := cast.ToIntE(p)
 				if err != nil {
 					return err
 				}
@@ -92,12 +92,12 @@ func TestCustomHandlerConversion(t *testing.T) {
 
 			if err == nil {
 				// Test execution
-				event := &Event{
+				event := &event{
 					topic:   T("type=test"),
 					payload: tt.payload,
 				}
 
-				err = handler(context.Background(), event)
+				err = handler(context.Background(), event.topic, event.payload)
 				if tt.expectError != "" && (err == nil || err.Error() != tt.expectError) {
 					t.Errorf("handler execution error = %v, expectError %v", err, tt.expectError)
 				}
@@ -114,8 +114,8 @@ func TestMultipleConverters(t *testing.T) {
 	// First converter handles func(string)
 	stringConverter := ToHandler(func(ctx context.Context, cb any) (Handler, error) {
 		if fn, ok := cb.(func(string) error); ok {
-			return func(ctx context.Context, e *Event) error {
-				return fn(cast.ToString(e.Payload()))
+			return func(ctx context.Context, t *Topic, p any) error {
+				return fn(cast.ToString(p))
 			}, nil
 		}
 		return nil, nil
@@ -124,8 +124,8 @@ func TestMultipleConverters(t *testing.T) {
 	// Second converter handles func(int)
 	intConverter := ToHandler(func(ctx context.Context, cb any) (Handler, error) {
 		if fn, ok := cb.(func(int) error); ok {
-			return func(ctx context.Context, e *Event) error {
-				return fn(cast.ToInt(e.Payload()))
+			return func(ctx context.Context, t *Topic, p any) error {
+				return fn(cast.ToInt(p))
 			}, nil
 		}
 		return nil, nil

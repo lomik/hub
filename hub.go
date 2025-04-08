@@ -41,10 +41,18 @@ func New(opts ...HubOption) *Hub {
 // Subscribe registers an event handler with flexible callback signature options.
 //
 // Supported callback formats:
-//  1. Minimal:      func(ctx context.Context) error
-//  2. Flexible:  func(ctx context.Context, topic *Topic, payload any) error
-//  3. Typed payload: func(ctx context.Context, payload Type) error
-//  4. Generic payload: func(ctx context.Context, payload any) error
+//  1. Minimal without topic and payload:
+//     func(ctx context.Context) error
+//     func(ctx context.Context)
+//  2. With original topic:
+//     func(ctx context.Context, topic *Topic, payload any) error
+//     func(ctx context.Context, topic *Topic, payload any)
+//  3. Typed payload:
+//     func(ctx context.Context, payload Type) error
+//     func(ctx context.Context, payload Type)
+//  4. Generic payload without topic:
+//     func(ctx context.Context, payload any) error
+//     func(ctx context.Context, payload any)
 //
 // Supported payload types (Type):
 //   - All integer types (int8-int64, uint8-uint64)

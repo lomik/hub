@@ -2,9 +2,12 @@ package hub
 
 import (
 	"context"
+	"math"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/lomik/hub/pkg/cmap"
 )
 
 func TestNewHub(t *testing.T) {
@@ -215,4 +218,222 @@ func TestHubLen(t *testing.T) {
 	if h.Len() != 0 {
 		t.Error("Expected length 0 after unsubscribe")
 	}
+}
+
+func makeTestHub(subTimeout time.Duration) (*Hub, *cmap.CMap) {
+	ctx := context.Background()
+	h := New()
+	c := cmap.New()
+
+	h.Subscribe(ctx, T("a=10", "b=20"), func(ctx context.Context) {
+		if subTimeout > 0 {
+			time.Sleep(subTimeout)
+		}
+		c.Add("a=10, b=20", 1)
+	})
+
+	h.Subscribe(ctx, T("a=10", "b=21"), func(ctx context.Context) {
+		if subTimeout > 0 {
+			time.Sleep(subTimeout)
+		}
+		c.Add("a=10, b=21", 1)
+	})
+
+	h.Subscribe(ctx, T("a=11", "b=20"), func(ctx context.Context) {
+		if subTimeout > 0 {
+			time.Sleep(subTimeout)
+		}
+		c.Add("a=11, b=20", 1)
+	})
+
+	h.Subscribe(ctx, T("a=11", "b=21"), func(ctx context.Context) {
+		if subTimeout > 0 {
+			time.Sleep(subTimeout)
+		}
+		c.Add("a=11, b=21", 1)
+	})
+
+	h.Subscribe(ctx, T("a=*", "b=21"), func(ctx context.Context) {
+		if subTimeout > 0 {
+			time.Sleep(subTimeout)
+		}
+		c.Add("a=*, b=21", 1)
+	})
+
+	return h, c
+}
+
+func TestHubPubSubMatch(t *testing.T) {
+	ctx := context.Background()
+	h, c := makeTestHub(0)
+
+	checkC := func(t *testing.T, mp map[string]int) {
+		if !c.Eq(mp) {
+			t.Error("Result mismatch")
+		}
+	}
+
+	t.Run("a=10, b=20, sync", func(t *testing.T) {
+		c.Clear()
+		h.Publish(ctx, T("a=10", "b=20"), nil, Sync(true))
+		checkC(t, map[string]int{"a=10, b=20": 1})
+	})
+
+	t.Run("a=10, b=21, sync", func(t *testing.T) {
+		c.Clear()
+		h.Publish(ctx, T("a=10", "b=21"), nil, Sync(true))
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1})
+	})
+
+	t.Run("a=10, b=*, sync", func(t *testing.T) {
+		c.Clear()
+		h.Publish(ctx, T("a=10", "b=*"), nil, Sync(true))
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+}
+
+func TestHubPubSubSyncAsync(t *testing.T) {
+	ctx := context.Background()
+	h, c := makeTestHub(time.Second)
+
+	checkT := func(t *testing.T, s time.Time, v int) {
+		if int(math.Round(time.Since(s).Seconds())) != v {
+			t.Error("Result duration ", time.Since(s))
+		}
+	}
+
+	checkC := func(t *testing.T, mp map[string]int) {
+		if !c.Eq(mp) {
+			t.Error("Result mismatch")
+		}
+	}
+
+	t.Run("sync", func(t *testing.T) {
+		c.Clear()
+		s := time.Now()
+		h.Publish(ctx, T("a=10", "b=*"), nil, Sync(true))
+		checkT(t, s, 3)
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+	t.Run("async", func(t *testing.T) {
+		c.Clear()
+		s := time.Now()
+		h.Publish(ctx, T("a=10", "b=*"), nil)
+		checkT(t, s, 0)
+		time.Sleep(2 * time.Second)
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+	t.Run("wait", func(t *testing.T) {
+		c.Clear()
+		s := time.Now()
+		h.Publish(ctx, T("a=10", "b=*"), nil, Wait(true))
+		checkT(t, s, 1)
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+}
+
+func TestHubPubSubOnFinish(t *testing.T) {
+	ctx := context.Background()
+	h, c := makeTestHub(0)
+
+	checkC := func(t *testing.T, mp map[string]int) {
+		if !c.Eq(mp) {
+			t.Error("Result mismatch")
+		}
+	}
+
+	t.Run("sync", func(t *testing.T) {
+		c.Clear()
+		ch := make(chan struct{})
+		h.Publish(ctx, T("a=10", "b=*"), nil, Sync(true), OnFinish(func(ctx context.Context) { close(ch) }))
+		<-ch
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+	t.Run("async", func(t *testing.T) {
+		c.Clear()
+		ch := make(chan struct{})
+		h.Publish(ctx, T("a=10", "b=*"), nil, OnFinish(func(ctx context.Context) { close(ch) }))
+		<-ch
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+	t.Run("wait", func(t *testing.T) {
+		c.Clear()
+		ch := make(chan struct{})
+		h.Publish(ctx, T("a=10", "b=*"), nil, Wait(true), OnFinish(func(ctx context.Context) { close(ch) }))
+		<-ch
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1})
+	})
+
+	t.Run("async, not matched", func(t *testing.T) {
+		c.Clear()
+		ch := make(chan struct{})
+		h.Publish(ctx, T("a=31", "b=32"), nil, OnFinish(func(ctx context.Context) { close(ch) }), nil)
+		<-ch
+		checkC(t, map[string]int{})
+	})
+}
+
+func TestHubPubSubOnce(t *testing.T) {
+	ctx := context.Background()
+	h, c := makeTestHub(0)
+
+	checkC := func(t *testing.T, mp map[string]int) {
+		if !c.Eq(mp) {
+			t.Error("Result mismatch")
+		}
+	}
+	t.Run("sync", func(t *testing.T) {
+		c.Clear()
+		h.Subscribe(ctx, T(), func(ctx context.Context) {
+			c.Add("once", 1)
+		}, Once(true), nil)
+		h.Publish(ctx, T("a=10", "b=*"), nil, Sync(true))
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1, "once": 1})
+		h.Publish(ctx, T("a=10", "b=*"), nil, Sync(true))
+		checkC(t, map[string]int{"a=10, b=21": 2, "a=*, b=21": 2, "a=10, b=20": 2, "once": 1})
+	})
+
+	t.Run("async", func(t *testing.T) {
+		c.Clear()
+		h.Subscribe(ctx, T(), func(ctx context.Context) {
+			c.Add("once", 1)
+		}, Once(true), nil)
+		h.Publish(ctx, T("a=10", "b=*"), nil)
+		time.Sleep(100 * time.Millisecond)
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1, "once": 1})
+		h.Publish(ctx, T("a=10", "b=*"), nil)
+		time.Sleep(100 * time.Millisecond)
+		checkC(t, map[string]int{"a=10, b=21": 2, "a=*, b=21": 2, "a=10, b=20": 2, "once": 1})
+	})
+
+	t.Run("async, with on finish", func(t *testing.T) {
+		c.Clear()
+		h.Subscribe(ctx, T(), func(ctx context.Context) {
+			c.Add("once", 1)
+		}, Once(true), nil)
+		h.Publish(ctx, T("a=10", "b=*"), nil, OnFinish(func(ctx context.Context) {}))
+		time.Sleep(100 * time.Millisecond)
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1, "once": 1})
+		h.Publish(ctx, T("a=10", "b=*"), nil, OnFinish(func(ctx context.Context) {}))
+		time.Sleep(100 * time.Millisecond)
+		checkC(t, map[string]int{"a=10, b=21": 2, "a=*, b=21": 2, "a=10, b=20": 2, "once": 1})
+	})
+
+	t.Run("wait", func(t *testing.T) {
+		c.Clear()
+		h.Subscribe(ctx, T(), func(ctx context.Context) {
+			c.Add("once", 1)
+		}, Once(true), nil)
+		h.Publish(ctx, T("a=10", "b=*"), nil, Wait(true))
+		checkC(t, map[string]int{"a=10, b=21": 1, "a=*, b=21": 1, "a=10, b=20": 1, "once": 1})
+		h.Publish(ctx, T("a=10", "b=*"), nil, Wait(true))
+		checkC(t, map[string]int{"a=10, b=21": 2, "a=*, b=21": 2, "a=10, b=20": 2, "once": 1})
+	})
+
 }

@@ -292,8 +292,6 @@ func (h *Hub) publishEventSync(ctx context.Context, e *event) {
 	for _, sid := range unsub {
 		h.Unsubscribe(ctx, sid)
 	}
-
-	return
 }
 
 // sync = false, wait = true
@@ -326,6 +324,7 @@ func (h *Hub) publishEventAsyncNoWaitFinish(ctx context.Context, e *event) {
 
 	h.RLock()
 	n := h.match(e.topic, func(s *sub) {
+		wg.Add(1)
 		go func(s *sub) {
 			_ = s.call(ctx, e)
 			wg.Done()

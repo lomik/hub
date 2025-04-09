@@ -69,9 +69,21 @@ func TestToHandler(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "minimal callback (no error)",
+			cb: func(ctx context.Context) {
+			},
+			wantErr: false,
+		},
+		{
 			name: "event callback",
 			cb: func(ctx context.Context, t *Topic, p any) error {
 				return nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "event callback (no error)",
+			cb: func(ctx context.Context, t *Topic, p any) {
 			},
 			wantErr: false,
 		},
@@ -82,6 +94,12 @@ func TestToHandler(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "generic any callback (no error)",
+			cb: func(ctx context.Context, a any) {
+			},
+			wantErr: false,
+		},
 	}
 
 	// Add tests for all supported types
@@ -89,6 +107,7 @@ func TestToHandler(t *testing.T) {
 		name string
 		cb   interface{}
 	}{
+		// with error
 		{"string", func(ctx context.Context, s string) error { return nil }},
 		{"int", func(ctx context.Context, i int) error { return nil }},
 		{"int8", func(ctx context.Context, i int8) error { return nil }},
@@ -107,6 +126,28 @@ func TestToHandler(t *testing.T) {
 		{"time.Duration", func(ctx context.Context, d time.Duration) error { return nil }},
 		{"[]string", func(ctx context.Context, s []string) error { return nil }},
 		{"map[string]any", func(ctx context.Context, m map[string]any) error { return nil }},
+		{"any", func(ctx context.Context, a any) error { return nil }},
+
+		// without error
+		{"string (no error)", func(ctx context.Context, s string) {}},
+		{"int (no error)", func(ctx context.Context, i int) {}},
+		{"int8 (no error)", func(ctx context.Context, i int8) {}},
+		{"int16 (no error)", func(ctx context.Context, i int16) {}},
+		{"int32 (no error)", func(ctx context.Context, i int32) {}},
+		{"int64 (no error)", func(ctx context.Context, i int64) {}},
+		{"uint (no error)", func(ctx context.Context, i uint) {}},
+		{"uint8 (no error)", func(ctx context.Context, i uint8) {}},
+		{"uint16 (no error)", func(ctx context.Context, i uint16) {}},
+		{"uint32 (no error)", func(ctx context.Context, i uint32) {}},
+		{"uint64 (no error)", func(ctx context.Context, i uint64) {}},
+		{"float32 (no error)", func(ctx context.Context, f float32) {}},
+		{"float64 (no error)", func(ctx context.Context, f float64) {}},
+		{"bool (no error)", func(ctx context.Context, b bool) {}},
+		{"time.Time (no error)", func(ctx context.Context, tm time.Time) {}},
+		{"time.Duration (no error)", func(ctx context.Context, d time.Duration) {}},
+		{"[]string (no error)", func(ctx context.Context, s []string) {}},
+		{"map[string]any (no error)", func(ctx context.Context, m map[string]any) {}},
+		{"any (no error)", func(ctx context.Context, a any) {}},
 	}
 
 	for _, typ := range supportedTypes {
@@ -179,6 +220,15 @@ func TestWrappedCallbackExecution(t *testing.T) {
 			},
 		},
 		{
+			name:    "int direct match (no error)",
+			payload: 42,
+			cb: func(ctx context.Context, i int) {
+				if i != 42 {
+					panic(errors.New("unexpected value"))
+				}
+			},
+		},
+		{
 			name:    "int conversion from string",
 			payload: "42",
 			cb: func(ctx context.Context, i int) error {
@@ -186,6 +236,15 @@ func TestWrappedCallbackExecution(t *testing.T) {
 					return errors.New("conversion failed")
 				}
 				return nil
+			},
+		},
+		{
+			name:    "int conversion from string (no error)",
+			payload: "42",
+			cb: func(ctx context.Context, i int) {
+				if i != 42 {
+					panic(errors.New("conversion failed"))
+				}
 			},
 		},
 		{
@@ -209,6 +268,81 @@ func TestWrappedCallbackExecution(t *testing.T) {
 				}
 				return nil
 			},
+		},
+		{
+			name: "generic any callback (no error)",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, a any) {
+				if reflect.TypeOf(a).Kind() != reflect.Struct {
+					panic(errors.New("unexpected type"))
+				}
+			},
+		},
+		{
+			name: "generic any callback with topic",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, t *Topic, a any) error {
+				if t.Get("type") != "test" {
+					panic(errors.New("wrong topic"))
+				}
+				if reflect.TypeOf(a).Kind() != reflect.Struct {
+					panic(errors.New("unexpected type"))
+				}
+				return nil
+			},
+		},
+		{
+			name: "generic any callback with topic (no error)",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, t *Topic, a any) {
+				if t.Get("type") != "test" {
+					panic(errors.New("wrong topic"))
+				}
+				if reflect.TypeOf(a).Kind() != reflect.Struct {
+					panic(errors.New("unexpected type"))
+				}
+			},
+		},
+		{
+			name: "context only",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context) error {
+				return nil
+			},
+		},
+		{
+			name: "context only (no error)",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context) {},
+		},
+		{
+			name: "cast error",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, i int) error {
+				return nil
+			},
+			expectError: true,
+		},
+		{
+			name: "cast error (no error)",
+			payload: struct {
+				Field string
+			}{Field: "test"},
+			cb: func(ctx context.Context, i int) {
+			},
+			expectError: true,
 		},
 	}
 

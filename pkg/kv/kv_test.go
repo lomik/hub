@@ -14,6 +14,11 @@ func TestParse(t *testing.T) {
 		wantErr bool
 	}{
 		{
+			name:  "empty",
+			input: []string{""},
+			want:  Map{data: []KV{}},
+		},
+		{
 			name:  "simple key=value pairs",
 			input: []string{"a=1", "b=2"},
 			want: Map{data: []KV{

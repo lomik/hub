@@ -2,6 +2,8 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/lomik/hub.svg)](https://pkg.go.dev/github.com/lomik/hub)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Maintainability](https://api.codeclimate.com/v1/badges/fe421bbf963ef352a8f8/maintainability)](https://codeclimate.com/github/lomik/hub/maintainability)
+[![Test Coverage](https://api.codeclimate.com/v1/badges/fe421bbf963ef352a8f8/test_coverage)](https://codeclimate.com/github/lomik/hub/test_coverage)
 
 Hub is a publish-subscribe event hub for Go applications, featuring:
 
